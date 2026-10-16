@@ -9,13 +9,16 @@ encoded it. This stage ships :class:`NoFec`, the identity codec; the crate's
 Reed-Solomon, interleaver and Viterbi codecs come in a later stage.
 """
 
-from typing import Protocol
+from typing import Final, Protocol
 
 from cryptovault.constants import MAX_BLOB_LEN, RS_BLOCK, RS_DATA
 from cryptovault.error import InvalidInputError
 from cryptovault.fec.interleaver import BlockInterleaver, CsprngLayer, Interleaver
 from cryptovault.fec.rs import ReedSolomonCodec
 from cryptovault.fec.viterbi import ViterbiCodec, ViterbiOnlyFec, _rs_len_from_body
+
+_DEFAULT_INTERLEAVE_DEPTH: Final = 5
+"""Interleave depth of the default stack, the CCSDS baseline."""
 
 __all__ = [
     "BlockInterleaver",
@@ -151,10 +154,14 @@ class ConcatenatedFec:
     def default(cls) -> "ConcatenatedFec":
         """Build the crate's default stack.
 
+        RS(255, 223), a depth-5 block interleaver without the CSPRNG layer,
+        and the CCSDS K=7 R=1/2 Viterbi code.
+
         Returns:
             The default concatenated FEC.
         """
-        raise NotImplementedError
+        interleaver = Interleaver(BlockInterleaver(_DEFAULT_INTERLEAVE_DEPTH), None)
+        return cls(ReedSolomonCodec(), interleaver, ViterbiCodec())
 
     def encode(self, data: bytes) -> bytes:
         """Encode ``data`` through ``Viterbi(interleave(RS(data)))``.
