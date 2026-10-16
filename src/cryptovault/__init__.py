@@ -49,7 +49,7 @@ from cryptovault.error import (
     InvalidInputError,
     KeyDerivationError,
 )
-from cryptovault.fec import ErrorCorrection, NoFec
+from cryptovault.fec import ConcatenatedFec, ErrorCorrection, NoFec
 from cryptovault.kdf import Argon2Kdf, KeyDerivation
 from cryptovault.vault import (
     CryptoVault,
@@ -82,6 +82,7 @@ __all__ = [
     "Argon2Kdf",
     "AuthenticatedCipher",
     "CipherError",
+    "ConcatenatedFec",
     "CryptoVault",
     "CryptoVaultError",
     "EncodingError",
