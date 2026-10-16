@@ -161,6 +161,21 @@ fn block_interleave() -> Vec<Value> {
     cases
 }
 
+/// `BlockInterleaver::new` outcomes around the valid depth range; read by
+/// `test_block_interleaver_accepts_only_the_crate_depth_range`.
+fn interleaver_depth() -> Vec<Value> {
+    [0usize, 1, RS_INTERLEAVE_MAX, RS_INTERLEAVE_MAX + 1, 1000]
+        .iter()
+        .map(|&depth| {
+            let expect = match BlockInterleaver::new(depth) {
+                Ok(interleaver) => json!({ "ok": interleaver.depth() }),
+                Err(error) => json!({ "error": error.to_string() }),
+            };
+            json!({ "depth": depth, "expect": expect })
+        })
+        .collect()
+}
+
 /// Prints the full FEC fixture document.
 pub fn fec_fixtures() -> ExitCode {
     let document = json!({
@@ -174,6 +189,7 @@ pub fn fec_fixtures() -> ExitCode {
         "rs_decode": rs_decode(),
         "rs_validate": rs_validate(),
         "block_interleave": block_interleave(),
+        "interleaver_depth": interleaver_depth(),
     });
     println!(
         "{}",

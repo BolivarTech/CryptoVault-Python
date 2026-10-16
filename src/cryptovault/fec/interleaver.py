@@ -17,6 +17,11 @@ class BlockInterleaver:
         """Store the depth."""
         self._depth = depth
 
+    @property
+    def depth(self) -> int:
+        """Interleave depth: codewords per window."""
+        raise NotImplementedError
+
     def interleave(self, rs_stream: bytes) -> bytes:
         """Reorder ``rs_stream`` to spread bursts across codewords.
 
