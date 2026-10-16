@@ -71,6 +71,8 @@ class CryptoVault:
 
     def unwrap_key(self, kek: bytes, salt: bytes, wrapped: str) -> bytes:
         """Unwrap key material."""
+        if len(kek) != KEY_LEN:
+            raise InvalidInputError(f"master key must be exactly {KEY_LEN} bytes")
         received = _decode_base64(wrapped)
         version, plaintext_len, body = decode_blob(self._fec, received)
         header = bytes([version]) + struct.pack("<I", plaintext_len)
