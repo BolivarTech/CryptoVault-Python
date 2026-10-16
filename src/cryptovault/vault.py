@@ -10,7 +10,7 @@ import os
 import struct
 
 from cryptovault._blob import decode_blob
-from cryptovault.cipher import Aes256GcmSivCipher, sample_nonce
+from cryptovault.cipher import AuthenticatedCipher, sample_nonce
 from cryptovault.constants import (
     BLOB_VERSION,
     KEY_LEN,
@@ -21,8 +21,8 @@ from cryptovault.constants import (
     SALT_LEN,
 )
 from cryptovault.error import EncodingError, InvalidInputError, KeyDerivationError
-from cryptovault.fec import NoFec
-from cryptovault.kdf import Argon2Kdf, expand_aead_key
+from cryptovault.fec import ErrorCorrection
+from cryptovault.kdf import KeyDerivation, expand_aead_key
 
 _AAD_PURPOSE_DATA = 0x01
 _AAD_PURPOSE_ENVELOPE = 0x02
@@ -81,7 +81,9 @@ def _decode_base64(text: str) -> bytes:
 class CryptoVault:
     """The crate's ``CryptoVault``."""
 
-    def __init__(self, kdf: Argon2Kdf, cipher: Aes256GcmSivCipher, fec: NoFec) -> None:
+    def __init__(
+        self, kdf: KeyDerivation, cipher: AuthenticatedCipher, fec: ErrorCorrection
+    ) -> None:
         """Compose the three strategies."""
         self._kdf = kdf
         self._cipher = cipher

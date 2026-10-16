@@ -9,8 +9,59 @@ encoded it. This stage ships :class:`NoFec`, the identity codec; the crate's
 Reed-Solomon, interleaver and Viterbi codecs come in a later stage.
 """
 
+from typing import Protocol, runtime_checkable
+
 from cryptovault.constants import MAX_BLOB_LEN
 from cryptovault.error import InvalidInputError
+
+
+@runtime_checkable
+class ErrorCorrection(Protocol):
+    """Forward-error-correction strategy, the crate's ``ErrorCorrection`` trait.
+
+    Implementations must be stateless or thread-safe: one vault may serve
+    several threads at once.
+    """
+
+    def encode(self, data: bytes) -> bytes:
+        """Add redundancy to the protected payload.
+
+        Args:
+            data: ``header ‖ nonce ‖ ciphertext ‖ tag``.
+
+        Returns:
+            The bytes that go on the wire, before base64.
+        """
+        ...
+
+    def decode(self, encoded: bytes, pre_len: int) -> bytes:
+        """Correct errors, then truncate to ``pre_len`` bytes.
+
+        Args:
+            encoded: The received bytes.
+            pre_len: The payload length returned by :meth:`validate_pre_fec`.
+
+        Returns:
+            The recovered protected payload.
+
+        Raises:
+            ErrorCorrectionError: If the corruption exceeds the code's capacity.
+        """
+        ...
+
+    def validate_pre_fec(self, received: bytes) -> int:
+        """Check the received length before any decoding allocates memory.
+
+        Args:
+            received: The base64-decoded blob.
+
+        Returns:
+            The length of the payload :meth:`decode` will recover.
+
+        Raises:
+            InvalidInputError: If the length cannot come from this codec.
+        """
+        ...
 
 
 class NoFec:

@@ -22,13 +22,13 @@ from cryptovault.constants import (
     TAG_LEN,
 )
 from cryptovault.error import InvalidInputError
-from cryptovault.fec import NoFec
+from cryptovault.fec import ErrorCorrection
 
 _MALFORMED: Final = "malformed blob"
 _LEN_FIELD: Final = struct.Struct("<I")
 
 
-def decode_blob(fec: NoFec, received: bytes) -> tuple[int, int, bytes]:
+def decode_blob(fec: ErrorCorrection, received: bytes) -> tuple[int, int, bytes]:
     """Undo the FEC layer and split the protected payload, checking structure.
 
     Checks run in the crate's order: the FEC length gate, then the header

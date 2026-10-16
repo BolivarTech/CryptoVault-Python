@@ -3,7 +3,7 @@
 # Date: 2026-10-16
 """Key-derivation strategy: Argon2id master key, HKDF-SHA256 sub-keys."""
 
-from typing import Final
+from typing import Final, Protocol, runtime_checkable
 
 from cryptography.exceptions import UnsupportedAlgorithm
 from cryptography.hazmat.primitives import hashes
@@ -15,6 +15,26 @@ from cryptovault.error import KeyDerivationError
 
 _HKDF_INFO_AEAD: Final = b"cryptovault:v1:aead"
 """HKDF ``info`` label of the AEAD sub-key."""
+
+
+@runtime_checkable
+class KeyDerivation(Protocol):
+    """Master-key derivation strategy, the crate's ``KeyDerivation`` trait."""
+
+    def derive_master(self, password: bytes, salt: bytes) -> bytes:
+        """Derive the 32-byte master key from a password and a salt.
+
+        Args:
+            password: The password, as bytes.
+            salt: The per-context salt.
+
+        Returns:
+            The 32-byte master key.
+
+        Raises:
+            KeyDerivationError: If the derivation fails.
+        """
+        ...
 
 
 class Argon2Kdf:

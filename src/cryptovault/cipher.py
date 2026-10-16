@@ -4,7 +4,7 @@
 """AEAD strategy: AES-256-GCM-SIV (RFC 8452) from ``cryptography``."""
 
 import os
-from typing import Final
+from typing import Final, Protocol, runtime_checkable
 
 from cryptography.exceptions import InvalidTag, UnsupportedAlgorithm
 from cryptography.hazmat.primitives.ciphers.aead import AESGCMSIV
@@ -31,6 +31,45 @@ def sample_nonce() -> bytes:
         return os.urandom(NONCE_LEN)
     except OSError as exc:
         raise CipherError(f"OsRng nonce sampling failed: {exc}") from exc
+
+
+@runtime_checkable
+class AuthenticatedCipher(Protocol):
+    """AEAD strategy, the crate's ``AuthenticatedCipher`` trait."""
+
+    def encrypt(self, key: bytes, nonce: bytes, aad: bytes, plaintext: bytes) -> bytes:
+        """Encrypt and authenticate ``plaintext`` under ``aad``.
+
+        Args:
+            key: The AEAD key.
+            nonce: The per-message nonce.
+            aad: Associated data, authenticated but not encrypted.
+            plaintext: The data to encrypt.
+
+        Returns:
+            ``ciphertext ‖ tag``.
+
+        Raises:
+            CipherError: If the key or nonce is invalid.
+        """
+        ...
+
+    def decrypt(self, key: bytes, nonce: bytes, aad: bytes, sealed: bytes) -> bytes:
+        """Verify and decrypt ``ciphertext ‖ tag``.
+
+        Args:
+            key: The AEAD key.
+            nonce: The per-message nonce.
+            aad: The associated data the blob was sealed with.
+            sealed: ``ciphertext ‖ tag``.
+
+        Returns:
+            The plaintext.
+
+        Raises:
+            CipherError: If the tag does not verify or the inputs are invalid.
+        """
+        ...
 
 
 class Aes256GcmSivCipher:
