@@ -71,14 +71,29 @@ class CryptoVault:
 
     def unwrap_key(self, kek: bytes, salt: bytes, wrapped: str) -> bytes:
         """Unwrap key material."""
-        if len(kek) != KEY_LEN:
+        return self._decrypt_bytes(kek, wrapped, _AAD_PURPOSE_ENVELOPE, salt)
+
+    def _decrypt_bytes(
+        self, key: bytes, blob: str, purpose: int, aad_extra: bytes
+    ) -> bytes:
+        """Open a blob of either purpose, checking in the crate's fixed order."""
+        if len(key) != KEY_LEN:
             raise InvalidInputError(f"master key must be exactly {KEY_LEN} bytes")
-        received = _decode_base64(wrapped)
+        # Rust measures the str in UTF-8 bytes; for ASCII that is len(blob).
+        if blob.isascii():
+            blob_len = len(blob)
+        else:
+            blob_len = len(blob.encode("utf-8", "surrogatepass"))
+        if blob_len > MAX_B64_LEN:
+            raise InvalidInputError("input exceeds maximum size")
+        received = _decode_base64(blob)
+        if len(received) > self._max_blob_len:
+            raise InvalidInputError("input exceeds maximum size")
         version, plaintext_len, body = decode_blob(self._fec, received)
         header = bytes([version]) + struct.pack("<I", plaintext_len)
-        aad = bytes([_AAD_PURPOSE_ENVELOPE]) + header + salt
+        aad = bytes([purpose]) + header + aad_extra
         nonce, sealed = body[:NONCE_LEN], body[NONCE_LEN:]
-        return self._cipher.decrypt(expand_aead_key(kek), nonce, aad, sealed)
+        return self._cipher.decrypt(expand_aead_key(key), nonce, aad, sealed)
 
     def derive_key(self, password: str, salt: bytes) -> bytes:
         """Derive a master key from a password."""
