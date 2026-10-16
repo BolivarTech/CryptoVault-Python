@@ -106,9 +106,16 @@ def test_with_max_blob_len_caps_a_new_vault_as_in_the_crate() -> None:
     ],
     ids=["base64-too-long", "utf8-bytes-too-long", "decoded-too-long"],
 )
-def test_oversized_input_is_rejected_before_decryption(blob: str) -> None:
+@pytest.mark.parametrize("operation", ["decrypt", "unwrap"])
+def test_oversized_input_is_rejected_before_decryption(
+    blob: str, operation: str
+) -> None:
+    vault = make_vault()
     with pytest.raises(InvalidInputError) as caught:
-        make_vault().decrypt_with_key(bytes(32), blob)
+        if operation == "decrypt":
+            vault.decrypt_with_key(bytes(32), blob)
+        else:
+            vault.unwrap_key(bytes(32), bytes(16), blob)
     assert str(caught.value) == "Invalid input: input exceeds maximum size"
 
 
