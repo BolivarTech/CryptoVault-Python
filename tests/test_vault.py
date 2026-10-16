@@ -170,3 +170,9 @@ def test_derive_key_matches_the_crate_including_its_errors() -> None:
         salt = bytes.fromhex(case["salt"])
         got = outcome_of(functools.partial(vault.derive_key, case["password"], salt))
         assert got == case["expect"], case
+
+
+def test_derive_key_rejects_a_password_that_is_not_encodable_as_utf8() -> None:
+    with pytest.raises(EncodingError) as caught:
+        make_vault().derive_key("pass\ud800word", bytes(16))
+    assert caught.value.message == "password is not valid UTF-8"
