@@ -6,7 +6,7 @@
 import os
 from typing import Final
 
-from cryptography.exceptions import InvalidTag
+from cryptography.exceptions import InvalidTag, UnsupportedAlgorithm
 from cryptography.hazmat.primitives.ciphers.aead import AESGCMSIV
 
 from cryptovault.constants import KEY_LEN, NONCE_LEN
@@ -47,13 +47,17 @@ class Aes256GcmSivCipher:
         a 16- or 24-byte key and silently run AES-128 or AES-192.
 
         Raises:
-            CipherError: If the key is not 32 bytes or the nonce not 12.
+            CipherError: If the key is not 32 bytes, the nonce not 12, or the
+                OpenSSL backend has no AES-GCM-SIV (it needs OpenSSL 3.2+).
         """
         if len(key) != KEY_LEN:
             raise CipherError(f"AES-256 key must be {KEY_LEN} bytes, got {len(key)}")
         if len(nonce) != NONCE_LEN:
             raise CipherError(f"nonce must be {NONCE_LEN} bytes, got {len(nonce)}")
-        return AESGCMSIV(key)
+        try:
+            return AESGCMSIV(key)
+        except UnsupportedAlgorithm as exc:
+            raise CipherError(f"AES-256-GCM-SIV is unavailable: {exc}") from exc
 
     def encrypt(self, key: bytes, nonce: bytes, aad: bytes, plaintext: bytes) -> bytes:
         """Encrypt and authenticate ``plaintext`` under ``aad``.
