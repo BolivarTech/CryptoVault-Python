@@ -9,7 +9,7 @@ import struct
 
 from cryptovault._blob import decode_blob
 from cryptovault.cipher import Aes256GcmSivCipher
-from cryptovault.constants import KEY_LEN, MAX_B64_LEN, NONCE_LEN
+from cryptovault.constants import KEY_LEN, MAX_B64_LEN, MAX_BLOB_LEN, NONCE_LEN
 from cryptovault.error import EncodingError, InvalidInputError
 from cryptovault.fec import NoFec
 from cryptovault.kdf import Argon2Kdf, expand_aead_key
@@ -52,10 +52,13 @@ class CryptoVault:
         self._kdf = kdf
         self._cipher = cipher
         self._fec = fec
+        self._max_blob_len = MAX_BLOB_LEN
 
     def with_max_blob_len(self, cap: int) -> "CryptoVault":
         """Return a vault with a lower decoded-blob cap."""
-        raise NotImplementedError
+        capped = CryptoVault(self._kdf, self._cipher, self._fec)
+        capped._max_blob_len = min(cap, MAX_BLOB_LEN)
+        return capped
 
     def decrypt_with_key(self, key: bytes, blob: str) -> str:
         """Decrypt a data blob."""
@@ -69,6 +72,8 @@ class CryptoVault:
         if blob_len > MAX_B64_LEN:
             raise InvalidInputError("input exceeds maximum size")
         received = _decode_base64(blob)
+        if len(received) > self._max_blob_len:
+            raise InvalidInputError("input exceeds maximum size")
         version, plaintext_len, body = decode_blob(self._fec, received)
         header = bytes([version]) + struct.pack("<I", plaintext_len)
         aad = bytes([_AAD_PURPOSE_DATA]) + header
