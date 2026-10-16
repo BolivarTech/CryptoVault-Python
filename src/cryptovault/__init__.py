@@ -4,15 +4,14 @@
 """Authenticated encryption byte-compatible with the ``cryptovault`` Rust crate.
 
 A blob produced here opens with the crate and the other way round, for data
-and for wrapped keys, as long as both sides use the same FEC strategy. This
-release ships the AEAD-only strategy, :class:`NoFec`: AES-256-GCM-SIV under an
-HKDF-SHA256 sub-key, with the header bound as associated data.
+and for wrapped keys, as long as both sides use the same FEC strategy. The
+payload is sealed with AES-256-GCM-SIV under an HKDF-SHA256 sub-key, with the
+header bound as associated data, and then protected for the channel by one of
+the crate's FEC strategies (see :mod:`cryptovault.fec`).
 
 Example:
-    >>> from cryptovault import (
-    ...     Aes256GcmSivCipher, Argon2Kdf, CryptoVault, NoFec, generate_dek,
-    ... )
-    >>> vault = CryptoVault(Argon2Kdf(), Aes256GcmSivCipher(), NoFec())
+    >>> from cryptovault import CryptoVault, generate_dek
+    >>> vault = CryptoVault.default()
     >>> key = generate_dek()
     >>> blob = vault.encrypt_with_key(key, "sk-secret")
     >>> vault.decrypt_with_key(key, blob)

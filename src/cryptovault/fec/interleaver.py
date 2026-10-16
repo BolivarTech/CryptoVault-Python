@@ -46,7 +46,19 @@ def _permute_windows(
 
 
 class BlockInterleaver:
-    """Deterministic block interleaver.
+    """Deterministic block interleaver, the crate's default interleaving stage.
+
+    Each window of ``depth`` codewords is written row by row (row ``r`` is
+    codeword ``r``) and read column by column, so a burst of up to ``depth``
+    consecutive channel bytes inside a full window lands at most one byte in
+    any codeword. A short final window is permuted at its own length. The
+    permutation uses no key and depends only on ``depth`` and the length.
+
+    Example:
+        >>> il = BlockInterleaver(5)
+        >>> data = bytes(range(256)) * 5
+        >>> il.deinterleave(il.interleave(data)) == data
+        True
 
     Args:
         depth: Codewords per window.
@@ -119,6 +131,14 @@ class BlockInterleaver:
 
 class CsprngLayer:
     """Optional keyed shuffle applied after the block interleaver.
+
+    Each window is shuffled by Fisher-Yates over a ChaCha20 keystream keyed
+    by the seed, so both ends derive the same permutation. This is
+    obfuscation, not security: only the AEAD gives confidentiality and
+    integrity, and the shuffle weakens the block interleaver's burst-spreading
+    guarantee. Build it through
+    :meth:`~cryptovault.fec.ConcatenatedFec.with_csprng_from_master`, which
+    derives the seed from a master key.
 
     Args:
         seed: The interleaver seed.
@@ -202,7 +222,11 @@ class CsprngLayer:
 
 
 class Interleaver:
-    """Interleaving strategy of the concatenated FEC.
+    """Interleaving strategy of the concatenated FEC, the crate's ``Interleaver``.
+
+    The block interleaver alone (``csprng=None``, the crate's ``Block``) or
+    followed by the CSPRNG layer (the crate's ``BlockThenCsprng``), which
+    :meth:`deinterleave` undoes first.
 
     Args:
         block: The block interleaver.

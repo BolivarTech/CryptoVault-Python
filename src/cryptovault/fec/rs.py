@@ -15,7 +15,22 @@ _RS = ReedSolomon(RS_PARITY, RS_DATA)
 
 
 class ReedSolomonCodec:
-    """Reed-Solomon RS(255, 223) outer code."""
+    """Reed-Solomon RS(255, 223) outer code, usable alone as an FEC strategy.
+
+    Each 223-byte data chunk becomes a 255-byte codeword with 32 parity bytes,
+    the last chunk zero-padded; a codeword corrects up to 16 bad bytes. The
+    field and code follow the ``reedsolomon`` 0.2.0 crate the Rust side uses
+    (polynomial ``0x187``, first root ``alpha^112``), and decoding refuses to
+    return a codeword whose syndromes are not all zero. Stateless and
+    shareable between threads.
+
+    Example:
+        >>> codec = ReedSolomonCodec()
+        >>> encoded = bytearray(codec.encode(b"payload"))
+        >>> encoded[0] ^= 0xFF
+        >>> codec.decode(bytes(encoded), 7)
+        b'payload'
+    """
 
     def encode(self, data: bytes) -> bytes:
         """Encode ``data`` into whole codewords.

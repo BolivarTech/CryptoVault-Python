@@ -17,7 +17,23 @@ _MIN_CHUNK_BODY: Final = 2 + TERMINATION_OVERHEAD
 
 
 class ViterbiCodec:
-    """CCSDS K=7 R=1/2 hard-decision convolutional code, chunked."""
+    """CCSDS K=7 R=1/2 hard-decision convolutional code, the inner FEC stage.
+
+    The stream is coded in sub-blocks of ``VITERBI_CHUNK`` bytes, each with
+    its own zero tail, so ``L`` bytes become ``2 * L + 2`` per sub-block. The
+    receiver recovers the sub-block boundaries from the total length alone.
+    Hard-decision decoding only corrects: a stream past its capacity decodes
+    to wrong bytes, which the Reed-Solomon code and the AEAD tag then reject.
+    Decoding has no length cap of its own; the vault applies
+    ``MAX_BLOB_LEN`` before it runs.
+
+    Example:
+        >>> codec = ViterbiCodec()
+        >>> coded = bytearray(codec.encode(b"inner code"))
+        >>> coded[3] ^= 0x10
+        >>> codec.decode(bytes(coded))
+        b'inner code'
+    """
 
     def encode(self, rs_stream: bytes) -> bytes:
         """Encode ``rs_stream`` in ``VITERBI_CHUNK``-byte sub-blocks.
@@ -72,7 +88,18 @@ def _chunk_body_lengths(total: int) -> list[int]:
 
 
 class ViterbiOnlyFec:
-    """AEAD plus Viterbi only: no Reed-Solomon and no interleaver."""
+    """AEAD plus Viterbi only: no Reed-Solomon and no interleaver.
+
+    Corrects scattered bit errors without the Reed-Solomon expansion, but not
+    bursts. The payload is coded directly, so its length need not be a
+    multiple of ``RS_BLOCK``. Stateless and shareable between threads.
+
+    Example:
+        >>> fec = ViterbiOnlyFec()
+        >>> blob = fec.encode(b"header|nonce|ct|tag")
+        >>> fec.decode(blob, fec.validate_pre_fec(blob))
+        b'header|nonce|ct|tag'
+    """
 
     def encode(self, data: bytes) -> bytes:
         """Viterbi-encode the protected payload.

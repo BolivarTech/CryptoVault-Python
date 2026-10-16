@@ -178,10 +178,9 @@ class CryptoVault:
 
     The vault composes three strategies, as ``CryptoVault::new`` does: key
     derivation, an AEAD cipher and a forward-error-correction codec. A blob
-    opens only with the strategy that produced it; this release ships
-    :class:`~cryptovault.fec.NoFec`, the crate's AEAD-only mode, and there is
-    deliberately no default codec, because the crate's default is its
-    concatenated FEC.
+    opens only with the strategy that produced it. :meth:`default` builds the
+    crate's default vault, with the concatenated FEC; the constructor has no
+    defaults, so every strategy is a visible choice.
 
     The instance keeps no secrets and no state between calls: the caller holds
     the 32-byte key and passes it to each call. One instance may be shared
@@ -190,7 +189,8 @@ class CryptoVault:
     Args:
         kdf: Derives master keys from passwords (``Argon2Kdf``).
         cipher: Seals and opens the payload (``Aes256GcmSivCipher``).
-        fec: Adds and removes channel redundancy (``NoFec``).
+        fec: Adds and removes channel redundancy (``ConcatenatedFec``,
+            ``ViterbiOnlyFec``, ``ReedSolomonCodec`` or ``NoFec``).
 
     Example:
         >>> from cryptovault import Aes256GcmSivCipher, Argon2Kdf, NoFec

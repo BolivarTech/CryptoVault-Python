@@ -1,12 +1,26 @@
 # Author: Julian Bolivar
 # Version: 0.1.0
 # Date: 2026-10-16
-"""Forward-error-correction strategies.
+"""Forward-error-correction strategies, the crate's ``fec`` module.
 
-The FEC layer only adds channel resilience; confidentiality and integrity come
-from the AEAD, applied first. A blob decodes only with the strategy that
-encoded it. This stage ships :class:`NoFec`, the identity codec; the crate's
-Reed-Solomon, interleaver and Viterbi codecs come in a later stage.
+The FEC layer adds channel resilience and nothing else: confidentiality and
+integrity come from the AEAD, applied first. A blob decodes only with the
+strategy that encoded it. Four strategies ship, as in the crate:
+
+* :class:`ConcatenatedFec`: Reed-Solomon, interleaver and Viterbi, the
+  default of ``CryptoVault.default()``.
+* :class:`ViterbiOnlyFec`: the inner Viterbi code alone.
+* :class:`ReedSolomonCodec`: the outer Reed-Solomon code alone.
+* :class:`NoFec`: no redundancy, AEAD-only blobs.
+
+Correction is all or nothing. Within capacity the payload comes back exact;
+past it the decode raises a :class:`~cryptovault.error.CryptoVaultError`, or
+returns bytes the AEAD tag then rejects.
+
+The codecs are pure Python. Decoding a clean blob costs about 1.7 s per
+128 KiB of plaintext; a sub-block with channel errors runs the full Viterbi
+trellis, about 12 microseconds per coded bit pair, roughly 12 s for a full
+124 950-byte sub-block (CPython 3.11).
 """
 
 from typing import Final, Protocol
@@ -63,6 +77,7 @@ class ErrorCorrection(Protocol):
             The recovered protected payload.
 
         Raises:
+            InvalidInputError: If ``encoded`` is structurally invalid.
             ErrorCorrectionError: If the corruption exceeds the code's capacity.
         """
         ...
@@ -139,10 +154,25 @@ class NoFec:
 class ConcatenatedFec:
     """Reed-Solomon, then interleaver, then Viterbi: the crate's default FEC.
 
+    Encoding runs ``Viterbi(interleave(RS(data)))``; decoding runs the exact
+    inverse. The interleaver spreads a channel burst over many Reed-Solomon
+    codewords, each of which corrects up to 16 bad bytes. Use
+    :meth:`default` for the crate's stack, :meth:`with_csprng_from_master`
+    for the keyed variant, or inject the stages. Stateless and shareable
+    between threads.
+
     Args:
         rs: The outer Reed-Solomon code.
         il: The interleaver.
         vt: The inner Viterbi code.
+
+    Example:
+        >>> fec = ConcatenatedFec.default()
+        >>> data = bytes(range(200))
+        >>> blob = bytearray(fec.encode(data))
+        >>> blob[100] ^= 0xFF
+        >>> fec.decode(bytes(blob), fec.validate_pre_fec(bytes(blob)))[:200] == data
+        True
     """
 
     def __init__(self, rs: ReedSolomonCodec, il: Interleaver, vt: ViterbiCodec) -> None:
@@ -167,6 +197,13 @@ class ConcatenatedFec:
     @classmethod
     def with_csprng_from_master(cls, master: bytes, depth: int) -> "ConcatenatedFec":
         """Build a stack with the CSPRNG layer seeded from ``master``.
+
+        The seed is the HKDF sub-key ``cryptovault:v1:interleaver``, never the
+        AEAD key. Both ends must build the stack from the same master and
+        depth. The layer is obfuscation, not security: the AEAD alone gives
+        confidentiality and integrity, and the keyed shuffle weakens the block
+        interleaver's burst-spreading guarantee, so prefer :meth:`default`
+        without a concrete reason for it.
 
         Args:
             master: The 32-byte master key.
