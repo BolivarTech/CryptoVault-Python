@@ -1,5 +1,5 @@
 # Author: Julian Bolivar
-# Version: 0.1.0
+# Version: 0.2.0
 # Date: 2026-10-16
 """Key-derivation strategy: Argon2id master key, HKDF-SHA256 sub-keys."""
 
@@ -15,6 +15,9 @@ from cryptovault.error import KeyDerivationError
 
 _HKDF_INFO_AEAD: Final = b"cryptovault:v1:aead"
 """HKDF ``info`` label of the AEAD sub-key."""
+
+_HKDF_INFO_INTERLEAVER: Final = b"cryptovault:v1:interleaver"
+"""HKDF ``info`` label of the CSPRNG interleaver seed."""
 
 
 class KeyDerivation(Protocol):
@@ -86,6 +89,21 @@ def expand_aead_key(master: bytes) -> bytes:
         The 32-byte AEAD key.
     """
     return _hkdf_expand(master, _HKDF_INFO_AEAD)
+
+
+def expand_interleaver_seed(master: bytes) -> bytes:
+    """Expand the CSPRNG interleaver seed from a master key.
+
+    ``HKDF-SHA256(salt = none, ikm = master, info = "cryptovault:v1:interleaver")``,
+    a sub-key separate from the AEAD key.
+
+    Args:
+        master: The 32-byte master key.
+
+    Returns:
+        The 32-byte interleaver seed.
+    """
+    return _hkdf_expand(master, _HKDF_INFO_INTERLEAVER)
 
 
 def _hkdf_expand(master: bytes, info: bytes) -> bytes:

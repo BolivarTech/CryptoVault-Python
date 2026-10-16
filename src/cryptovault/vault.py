@@ -1,5 +1,5 @@
 # Author: Julian Bolivar
-# Version: 0.1.0
+# Version: 0.2.0
 # Date: 2026-10-16
 """The vault, which composes key derivation, AEAD and FEC strategies.
 
@@ -15,7 +15,7 @@ import struct
 from typing import Final
 
 from cryptovault._blob import decode_blob
-from cryptovault.cipher import AuthenticatedCipher, sample_nonce
+from cryptovault.cipher import Aes256GcmSivCipher, AuthenticatedCipher, sample_nonce
 from cryptovault.constants import (
     BLOB_VERSION,
     KEY_LEN,
@@ -26,8 +26,8 @@ from cryptovault.constants import (
     SALT_LEN,
 )
 from cryptovault.error import EncodingError, InvalidInputError, KeyDerivationError
-from cryptovault.fec import ErrorCorrection
-from cryptovault.kdf import KeyDerivation, expand_aead_key
+from cryptovault.fec import ConcatenatedFec, ErrorCorrection
+from cryptovault.kdf import Argon2Kdf, KeyDerivation, expand_aead_key
 
 _AAD_PURPOSE_DATA: Final = 0x01
 """First AAD byte of data blobs; keeps them from opening as envelopes."""
@@ -178,10 +178,9 @@ class CryptoVault:
 
     The vault composes three strategies, as ``CryptoVault::new`` does: key
     derivation, an AEAD cipher and a forward-error-correction codec. A blob
-    opens only with the strategy that produced it; this release ships
-    :class:`~cryptovault.fec.NoFec`, the crate's AEAD-only mode, and there is
-    deliberately no default codec, because the crate's default is its
-    concatenated FEC.
+    opens only with the strategy that produced it. :meth:`default` builds the
+    crate's default vault, with the concatenated FEC; the constructor has no
+    defaults, so every strategy is a visible choice.
 
     The instance keeps no secrets and no state between calls: the caller holds
     the 32-byte key and passes it to each call. One instance may be shared
@@ -190,7 +189,8 @@ class CryptoVault:
     Args:
         kdf: Derives master keys from passwords (``Argon2Kdf``).
         cipher: Seals and opens the payload (``Aes256GcmSivCipher``).
-        fec: Adds and removes channel redundancy (``NoFec``).
+        fec: Adds and removes channel redundancy (``ConcatenatedFec``,
+            ``ViterbiOnlyFec``, ``ReedSolomonCodec`` or ``NoFec``).
 
     Example:
         >>> from cryptovault import Aes256GcmSivCipher, Argon2Kdf, NoFec
@@ -210,6 +210,18 @@ class CryptoVault:
         self._cipher = cipher
         self._fec = fec
         self._max_blob_len = MAX_BLOB_LEN
+
+    @classmethod
+    def default(cls) -> "CryptoVault":
+        """Build the crate's default vault, ``CryptoVault::default()``.
+
+        Argon2id, AES-256-GCM-SIV and the default concatenated FEC
+        (:meth:`ConcatenatedFec.default`).
+
+        Returns:
+            The default vault.
+        """
+        return cls(Argon2Kdf(), Aes256GcmSivCipher(), ConcatenatedFec.default())
 
     def with_max_blob_len(self, cap: int) -> "CryptoVault":
         """Return a new vault that rejects decoded blobs longer than ``cap``.

@@ -1,7 +1,9 @@
 # Author: Julian Bolivar
-# Version: 0.1.0
+# Version: 0.2.0
 # Date: 2026-10-16
 """Python to Rust: the real crate opens every blob this package produces (CV-16).
+
+Every FEC strategy is covered, NoFec included.
 
 Needs the Rust toolchain, so it is deselected by default. Run it with::
 
@@ -12,15 +14,25 @@ import json
 import pathlib
 import shutil
 import subprocess
+from typing import Any
 
 import pytest
 
 from cryptovault import Aes256GcmSivCipher, Argon2Kdf, CryptoVault, NoFec
+from cryptovault.fec import ErrorCorrection
+from tests.test_vault_fec import fec_from_spec
 
 pytestmark = pytest.mark.interop
 
 MANIFEST = pathlib.Path(__file__).parents[1] / "interop" / "rust" / "Cargo.toml"
 PLAINTEXTS = ["", "a", "sk-secret", "ñandú \U0001f510 中文", "x" * 131072]
+STRATEGIES: list[dict[str, Any]] = [
+    {"name": "NoFec"},
+    {"name": "ConcatenatedFec"},
+    {"name": "ViterbiOnlyFec"},
+    {"name": "ReedSolomonCodec"},
+    {"name": "CsprngFromMaster", "master": bytes(range(32)).hex(), "depth": 5},
+]
 ENVELOPES = [
     (bytes(range(16)), bytes(range(64, 96))),
     (b"", bytes(32)),
@@ -37,23 +49,35 @@ def test_the_rust_crate_opens_every_blob_python_produces(
         pytest.fail(
             "cargo is required for -m interop: install Rust from https://rustup.rs"
         )
-    vault = CryptoVault(Argon2Kdf(), Aes256GcmSivCipher(), NoFec())
     key, kek = bytes(range(32)), bytes(range(0x60, 0x80))
-    document = {
-        "data": [
-            {"key": key.hex(), "plaintext": p, "blob": vault.encrypt_with_key(key, p)}
-            for p in PLAINTEXTS
-        ],
-        "envelope": [
+    document: dict[str, list[dict[str, Any]]] = {"strategies": []}
+    for spec in STRATEGIES:
+        fec: ErrorCorrection = (
+            NoFec() if spec["name"] == "NoFec" else fec_from_spec(spec)
+        )
+        vault = CryptoVault(Argon2Kdf(), Aes256GcmSivCipher(), fec)
+        document["strategies"].append(
             {
-                "kek": kek.hex(),
-                "salt": salt.hex(),
-                "key_material": material.hex(),
-                "blob": vault.wrap_key(kek, salt, material),
+                "fec": spec,
+                "data": [
+                    {
+                        "key": key.hex(),
+                        "plaintext": p,
+                        "blob": vault.encrypt_with_key(key, p),
+                    }
+                    for p in PLAINTEXTS
+                ],
+                "envelope": [
+                    {
+                        "kek": kek.hex(),
+                        "salt": salt.hex(),
+                        "key_material": material.hex(),
+                        "blob": vault.wrap_key(kek, salt, material),
+                    }
+                    for salt, material in ENVELOPES
+                ],
             }
-            for salt, material in ENVELOPES
-        ],
-    }
+        )
     path = tmp_path / "python_blobs.json"
     path.write_text(json.dumps(document), encoding="utf-8")
     result = subprocess.run(
@@ -73,4 +97,4 @@ def test_the_rust_crate_opens_every_blob_python_produces(
         check=False,
     )
     assert result.returncode == 0, result.stdout + result.stderr
-    assert "verified 9 passed, 0 failed" in result.stdout
+    assert "verified 45 passed, 0 failed" in result.stdout

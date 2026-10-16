@@ -1,11 +1,13 @@
 // Author: Julian Bolivar
-// Version: 0.1.0
+// Version: 0.2.0
 // Date: 2026-10-16
 //! Interoperability tool that pins CryptoVault-Python to the `cryptovault` crate.
 //!
 //! Subcommand `fixtures` prints a JSON document of reference values produced by
 //! the crate itself over a vault built with `NoFec`. The Python test suite reads
 //! it from `tests/fixtures/rust_nofec.json`.
+
+mod fec;
 
 use std::process::ExitCode;
 
@@ -421,8 +423,9 @@ fn verify_case(vault: &CryptoVault, kind: &str, case: &Value) -> std::result::Re
     }
 }
 
-/// Verifies every case of a Python-produced document. Exit 0 when all pass and
-/// there was at least one, 1 on any mismatch, 2 when the file cannot be read;
+/// Verifies every case of a Python-produced document, one vault per FEC strategy
+/// it names. Exit 0 when all pass and there was at least one, 1 on any mismatch,
+/// 2 when the file cannot be read;
 /// read by `test_the_rust_crate_opens_every_blob_python_produces`.
 fn verify(path: &str) -> ExitCode {
     let text = match std::fs::read_to_string(path) {
@@ -439,15 +442,19 @@ fn verify(path: &str) -> ExitCode {
             return ExitCode::from(2);
         }
     };
-    let vault = vault();
     let (mut passed, mut failed) = (0usize, 0usize);
-    for kind in ["data", "envelope"] {
-        for (index, case) in document[kind].as_array().into_iter().flatten().enumerate() {
-            match verify_case(&vault, kind, case) {
-                Ok(()) => passed += 1,
-                Err(reason) => {
-                    failed += 1;
-                    println!("FAIL {kind}[{index}]: {reason}");
+    for strategy in document["strategies"].as_array().into_iter().flatten() {
+        let spec = &strategy["fec"];
+        let name = spec["name"].as_str().unwrap_or("?");
+        let vault = fec::vault_for(spec);
+        for kind in ["data", "envelope"] {
+            for (index, case) in strategy[kind].as_array().into_iter().flatten().enumerate() {
+                match verify_case(&vault, kind, case) {
+                    Ok(()) => passed += 1,
+                    Err(reason) => {
+                        failed += 1;
+                        println!("FAIL {name} {kind}[{index}]: {reason}");
+                    }
                 }
             }
         }
@@ -464,9 +471,12 @@ fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().collect();
     match args.get(1).map(String::as_str) {
         Some("fixtures") => fixtures(),
+        Some("fec-fixtures") => fec::fec_fixtures(),
         Some("verify") if args.len() == 3 => verify(&args[2]),
         _ => {
-            eprintln!("usage: cryptovault-interop fixtures | verify <python-blobs.json>");
+            eprintln!(
+                "usage: cryptovault-interop fixtures | fec-fixtures | verify <python-blobs.json>"
+            );
             ExitCode::from(2)
         }
     }

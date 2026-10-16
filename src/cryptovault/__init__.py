@@ -1,18 +1,17 @@
 # Author: Julian Bolivar
-# Version: 0.1.0
+# Version: 0.2.0
 # Date: 2026-10-16
 """Authenticated encryption byte-compatible with the ``cryptovault`` Rust crate.
 
 A blob produced here opens with the crate and the other way round, for data
-and for wrapped keys, as long as both sides use the same FEC strategy. This
-release ships the AEAD-only strategy, :class:`NoFec`: AES-256-GCM-SIV under an
-HKDF-SHA256 sub-key, with the header bound as associated data.
+and for wrapped keys, as long as both sides use the same FEC strategy. The
+payload is sealed with AES-256-GCM-SIV under an HKDF-SHA256 sub-key, with the
+header bound as associated data, and then protected for the channel by one of
+the crate's FEC strategies (see :mod:`cryptovault.fec`).
 
 Example:
-    >>> from cryptovault import (
-    ...     Aes256GcmSivCipher, Argon2Kdf, CryptoVault, NoFec, generate_dek,
-    ... )
-    >>> vault = CryptoVault(Argon2Kdf(), Aes256GcmSivCipher(), NoFec())
+    >>> from cryptovault import CryptoVault, generate_dek
+    >>> vault = CryptoVault.default()
     >>> key = generate_dek()
     >>> blob = vault.encrypt_with_key(key, "sk-secret")
     >>> vault.decrypt_with_key(key, blob)
@@ -32,8 +31,14 @@ from cryptovault.constants import (
     MAX_PLAINTEXT_LEN,
     NONCE_LEN,
     RECOMMENDED_MAX_PAYLOAD,
+    RS_BLOCK,
+    RS_DATA,
+    RS_INTERLEAVE_MAX,
+    RS_PARITY,
     SALT_LEN,
     TAG_LEN,
+    TERMINATION_OVERHEAD,
+    VITERBI_CHUNK,
 )
 from cryptovault.error import (
     CipherError,
@@ -43,7 +48,7 @@ from cryptovault.error import (
     InvalidInputError,
     KeyDerivationError,
 )
-from cryptovault.fec import ErrorCorrection, NoFec
+from cryptovault.fec import ConcatenatedFec, ErrorCorrection, NoFec
 from cryptovault.kdf import Argon2Kdf, KeyDerivation
 from cryptovault.vault import (
     CryptoVault,
@@ -64,12 +69,19 @@ __all__ = [
     "MAX_PLAINTEXT_LEN",
     "NONCE_LEN",
     "RECOMMENDED_MAX_PAYLOAD",
+    "RS_BLOCK",
+    "RS_DATA",
+    "RS_INTERLEAVE_MAX",
+    "RS_PARITY",
     "SALT_LEN",
     "TAG_LEN",
+    "TERMINATION_OVERHEAD",
+    "VITERBI_CHUNK",
     "Aes256GcmSivCipher",
     "Argon2Kdf",
     "AuthenticatedCipher",
     "CipherError",
+    "ConcatenatedFec",
     "CryptoVault",
     "CryptoVaultError",
     "EncodingError",

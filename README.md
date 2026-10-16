@@ -1,13 +1,13 @@
 # CryptoVault-Python
 
 **A Python implementation of the [`cryptovault`](https://github.com/BolivarTech/cryptovault)
-blob format, byte-compatible with the Rust crate.** This first release covers the AEAD-only
-`NoFec` mode: AES-256-GCM-SIV under an HKDF-SHA256 key, Argon2id key derivation, and
-DEK/KEK key wrapping, with no forward-error-correction layer.
+blob format, byte-compatible with the Rust crate.** AES-256-GCM-SIV under an HKDF-SHA256 key,
+Argon2id key derivation and DEK/KEK key wrapping, followed by the crate's forward-error
+correction: Reed-Solomon, an interleaver and a Viterbi code, or no FEC at all.
 
-> **Status: 0.1.0, in development.** The `NoFec` format is implemented and checked in both
-> directions against `cryptovault` 0.3.0. There is no tagged release yet, and the package is
-> not on PyPI.
+> **Status: 0.2.0, in development.** Every FEC strategy of `cryptovault` 0.3.0 is implemented
+> and checked in both directions against the crate. There is no tagged release yet, and the
+> package is not on PyPI.
 
 ---
 
@@ -19,17 +19,14 @@ opens no connections and knows nothing about transports: it turns text or key ma
 a blob and back, and the caller moves the blob.
 
 The Rust crate stacks two independent layers: an AEAD that provides all of the security,
-then an optional FEC that adds channel resilience and no security. Only the first layer is
-implemented here. It is the wire format the crate produces when built with its `NoFec`
-strategy.
+then an FEC that adds channel resilience and no security. Both are implemented here, with
+the same four FEC strategies as the crate.
 
 ## Quick start
 
 ```python
->>> from cryptovault import (
-...     Aes256GcmSivCipher, Argon2Kdf, CryptoVault, NoFec, generate_dek, generate_salt,
-... )
->>> vault = CryptoVault(Argon2Kdf(), Aes256GcmSivCipher(), NoFec())
+>>> from cryptovault import CryptoVault, generate_dek, generate_salt
+>>> vault = CryptoVault.default()             # Argon2id + AES-256-GCM-SIV + concatenated FEC
 
 >>> key = generate_dek()                      # or vault.derive_key(password, salt)
 >>> blob = vault.encrypt_with_key(key, "sk-secret")
@@ -45,8 +42,16 @@ True
 
 ```
 
-The vault has no default FEC strategy on purpose. `CryptoVault::default()` in Rust uses the
-concatenated FEC, and a Python default of `NoFec` would produce blobs it cannot read.
+`CryptoVault.default()` matches `CryptoVault::default()` in Rust. To pick another FEC
+strategy, compose the vault yourself; the constructor has no defaults:
+
+```python
+>>> from cryptovault import Aes256GcmSivCipher, Argon2Kdf, NoFec
+>>> aead_only = CryptoVault(Argon2Kdf(), Aes256GcmSivCipher(), NoFec())
+>>> aead_only.decrypt_with_key(key, aead_only.encrypt_with_key(key, "hi"))
+'hi'
+
+```
 
 `derive_key(password, salt)` runs Argon2id with the crate's OWASP-2025 profile (64 MiB, three
 passes, four lanes). Call it once per session and keep the key.
@@ -54,7 +59,7 @@ passes, four lanes). Call it once per session and keep the key.
 ### Blob layout
 
 ```text
-blob    = base64( header ‖ nonce(12 B) ‖ ciphertext ‖ tag(16 B) )      standard alphabet, padded
+blob    = base64( fec.encode( header ‖ nonce(12 B) ‖ ciphertext ‖ tag(16 B) ) )   standard, padded
 header  = version (0x01) ‖ plaintext_len (u32, little-endian)
 key     = HKDF-SHA256( salt = none, ikm = 32-byte master key, info = "cryptovault:v1:aead", L = 32 )
 AAD     = purpose ‖ header ‖ aad_extra
@@ -63,10 +68,41 @@ extra   = empty for data · the salt for a wrapped key (authenticated, never sto
 cipher  = AES-256-GCM-SIV, fresh random 12-byte nonce per message
 ```
 
-The header travels in the clear and is bound as associated data, so changing any bit of it
-fails authentication. The purpose byte keeps a data blob from opening as a wrapped key, and
+The header is bound as associated data, so changing any bit of it fails authentication. The purpose byte keeps a data blob from opening as a wrapped key, and
 the other way round. As for the version byte, it leaves room for the format to evolve; today
 only `0x01` is accepted.
+
+## FEC strategies
+
+The FEC layer sits after the AEAD and only helps a blob survive a noisy channel. Correction
+is all or nothing. Within capacity the blob comes back exact; past it, decryption fails with
+a typed error and never returns wrong plaintext, because the AEAD tag checks the result.
+
+| Strategy | Pipeline | Corrects | Size of a 1 KiB message |
+|---|---|---|---|
+| `ConcatenatedFec.default()` | RS(255, 223) → depth-5 block interleaver → Viterbi K=7 R=1/2 | scattered bit errors and bursts | 3404 B |
+| `ConcatenatedFec.with_csprng_from_master(master, depth)` | the same, plus a keyed shuffle per window | as above, weaker burst spreading | 3404 B |
+| `ViterbiOnlyFec()` | Viterbi K=7 R=1/2 | scattered bit errors | 2824 B |
+| `ReedSolomonCodec()` | RS(255, 223) | up to 16 bad bytes per 255-byte codeword | 1700 B |
+| `NoFec()` | none | nothing; any change fails authentication | 1412 B |
+
+The CSPRNG variant derives its seed from the master key with HKDF (`info =
+"cryptovault:v1:interleaver"`), and both ends must build it from the same master and depth.
+It is obfuscation, not security.
+
+The codecs are pure Python, so they are much slower than the Rust crate. Measured with
+CPython 3.11 on Windows:
+
+| Strategy | Encrypt 128 KiB | Decrypt 128 KiB | Decrypt 128 KiB, one flipped bit | Decrypt 1 KiB, one flipped bit |
+|---|---|---|---|---|
+| `ConcatenatedFec` | 1.4 s | 1.7 s | 15.6 s | 0.16 s |
+| `ViterbiOnlyFec` | 0.25 s | 0.66 s | 14.3 s | 0.12 s |
+| `ReedSolomonCodec` | 1.1 s | 1.0 s | 0.82 s | 0.01 s |
+| `NoFec` | < 0.01 s | < 0.01 s | fails, < 0.01 s | fails, < 0.01 s |
+
+A clean Viterbi sub-block decodes directly. One with channel errors runs the full trellis,
+which in Python costs about 12 µs per coded bit pair, or about 12 s for a full 124 950-byte
+sub-block. Noisy channels carrying large messages pay that price.
 
 ## Security model
 
@@ -90,8 +126,8 @@ package. Nothing here is home-rolled crypto.
 - **Replay.** A valid blob stays valid. Detecting repeats is the caller's protocol concern.
 - **Traffic analysis.** The header carries the plaintext length in the clear, and the blob
   size follows from it.
-- **Channel errors.** Without FEC, a single flipped bit makes the blob fail authentication.
-  That is the intended behavior: it fails closed and never decrypts to something wrong.
+- **Channel errors past the FEC capacity.** The blob fails closed and never decrypts to
+  something wrong. With `NoFec`, a single flipped bit is enough.
 - **Memory disclosure.** The crate wipes secrets from memory; Python's immutable `str` and
   `bytes` cannot promise that, and this package does not try.
 - **Host compromise.** A key in process memory is as safe as the process.
@@ -106,11 +142,11 @@ package. Nothing here is home-rolled crypto.
   CPU.
 - **Rekey before ~2⁴⁸ messages per key.** That is the birthday bound for random 96-bit
   nonces.
-- **Decode with the same mode you encoded with.** A default `cryptovault::CryptoVault` in Rust
-  wraps the blob in FEC, which this package cannot read yet. Interoperate with a Rust vault
-  built with `NoFec`.
+- **Decode with the same FEC strategy you encoded with.** A blob from a default Rust vault
+  opens with `CryptoVault.default()`; one from a `NoFec` vault needs a `NoFec` vault here.
 - **Bound decrypt input from untrusted sources.** `with_max_blob_len(cap)` returns a vault
-  that rejects larger blobs before any decryption work.
+  that rejects larger blobs before any decryption work. With FEC this also bounds the decode
+  time, which grows with the number of corrupted Viterbi sub-blocks.
 - **One blob, one message.** Framing and delivery belong to the caller.
 
 ## Errors
@@ -120,32 +156,39 @@ matches the crate's `Display` for the same input, word for word:
 
 | Class | Raised for |
 |---|---|
-| `InvalidInputError` | wrong key or salt length, empty password, oversized input, malformed blob, unknown version |
+| `InvalidInputError` | wrong key, salt or seed length, empty password, interleave depth out of range, oversized input, malformed blob, unknown version |
 | `EncodingError` | non-canonical base64, text that is not valid UTF-8 |
 | `CipherError` | a tag that does not verify (wrong key, salt or purpose, any tampering) |
 | `KeyDerivationError` | Argon2id failure, or no OS entropy for a salt or DEK |
-| `ErrorCorrectionError` | reserved for the FEC strategies of a later release |
+| `ErrorCorrectionError` | corruption beyond the Reed-Solomon capacity, or no ChaCha20 in the backend for the CSPRNG layer |
 
 ## Compatibility testing
 
-The test suite replays reference data that the crate itself produced: its constants, data
-blobs up to 128 KiB, wrapped keys, Argon2id outputs, and the exact error for 358
-adversarial inputs (every single-bit flip of a blob, truncations, bad versions and lengths,
-non-canonical base64, wrong keys and salts, invalid UTF-8). A second test hands blobs made in
-Python to the crate and checks that it opens each one. The generator lives in `interop/rust`:
+The test suite replays reference data that the crate itself produced. For `NoFec`: its
+constants, data blobs up to 128 KiB, wrapped keys, Argon2id outputs, and the exact error for
+358 adversarial inputs (every single-bit flip of a blob, truncations, bad versions and
+lengths, non-canonical base64, wrong keys and salts, invalid UTF-8). For the FEC layer: the
+Reed-Solomon codewords and the outcome of 146 corrupted decodes, the interleaver
+permutations (the CSPRNG layer included), Viterbi encodings and 26 corrupted decodes down to
+the wrong bytes a heavily damaged stream decodes to, and 335 adversarial blobs under three
+strategies (sampled bit flips, bursts, truncation, rewritten headers, wrong keys and salts).
+In the other direction, a second test hands the crate blobs made in Python under every
+strategy and checks that it opens each one. The generator lives in `interop/rust`:
 
 ```sh
 uv run pytest                     # full suite, Rust fixtures included
 uv run pytest -m interop          # Python → Rust; needs the Rust toolchain
 cargo run --release --manifest-path interop/rust/Cargo.toml -- fixtures \
-    > tests/fixtures/rust_nofec.json   # regenerate the fixtures
+    > tests/fixtures/rust_nofec.json   # regenerate the NoFec fixtures
+cargo run --release --manifest-path interop/rust/Cargo.toml -- fec-fixtures \
+    > tests/fixtures/rust_fec.json     # regenerate the FEC fixtures
 ```
 
 ## Requirements
 
 - **Python 3.11** or newer. Tested on Linux and Windows with 3.11 and 3.14.
 - **`cryptography` 45.0.1 or newer**, linked against **OpenSSL 3.2 or newer** (AES-GCM-SIV and
-  Argon2id need it). Releases before 45.0.1 reject an empty plaintext, which the crate allows.
+  Argon2id need it; the CSPRNG layer also uses its ChaCha20). Releases before 45.0.1 reject an empty plaintext, which the crate allows.
   The official wheels qualify.
 
 ## Development
@@ -162,7 +205,7 @@ uv build
 1. **`NoFec` blob format, Argon2id and key wrapping.** Implemented and cross-checked against
    the crate in both directions.
 2. **The FEC strategies.** Reed-Solomon, the interleaver and Viterbi, so any `cryptovault`
-   blob can be read from Python.
+   blob can be read from Python. Implemented and cross-checked in both directions.
 
 ## License
 

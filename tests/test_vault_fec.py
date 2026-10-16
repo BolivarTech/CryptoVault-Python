@@ -1,0 +1,97 @@
+# Author: Julian Bolivar
+# Version: 0.2.0
+# Date: 2026-10-16
+"""Vault blobs under every FEC strategy open as they do in the crate."""
+
+from typing import Any
+
+from cryptovault import (
+    RECOMMENDED_MAX_PAYLOAD,
+    Aes256GcmSivCipher,
+    Argon2Kdf,
+    CryptoVault,
+    CryptoVaultError,
+)
+from cryptovault.fec import (
+    ConcatenatedFec,
+    ErrorCorrection,
+    ReedSolomonCodec,
+    ViterbiOnlyFec,
+)
+from tests.conftest import load_rust_fec_fixtures
+
+
+def fec_from_spec(spec: dict[str, Any]) -> ErrorCorrection:
+    """Build the FEC strategy a fixture row names."""
+    name = spec["name"]
+    if name == "ConcatenatedFec":
+        return ConcatenatedFec.default()
+    if name == "ViterbiOnlyFec":
+        return ViterbiOnlyFec()
+    if name == "ReedSolomonCodec":
+        return ReedSolomonCodec()
+    if name == "CsprngFromMaster":
+        master = bytes.fromhex(spec["master"])
+        return ConcatenatedFec.with_csprng_from_master(master, spec["depth"])
+    raise AssertionError(f"unknown FEC strategy {name}")
+
+
+def test_every_crate_blob_opens_under_its_fec_strategy() -> None:
+    rows = load_rust_fec_fixtures()["vault_blobs"]
+    assert len(rows) == 36
+    for row in rows:
+        vault = CryptoVault(
+            Argon2Kdf(), Aes256GcmSivCipher(), fec_from_spec(row["fec"])
+        )
+        if row["kind"] == "data":
+            got = vault.decrypt_with_key(bytes.fromhex(row["key"]), row["blob"])
+            assert got == row["plaintext"]
+        else:
+            material = vault.unwrap_key(
+                bytes.fromhex(row["kek"]), bytes.fromhex(row["salt"]), row["blob"]
+            )
+            assert material.hex() == row["key_material"]
+
+
+def test_default_vault_opens_the_crate_default_blobs() -> None:
+    rows = [
+        row
+        for row in load_rust_fec_fixtures()["vault_blobs"]
+        if row["fec"]["name"] == "ConcatenatedFec" and row["kind"] == "data"
+    ]
+    assert len(rows) == 5
+    vault = CryptoVault.default()
+    for row in rows:
+        got = vault.decrypt_with_key(bytes.fromhex(row["key"]), row["blob"])
+        assert got == row["plaintext"]
+
+
+def test_adversarial_fec_blobs_behave_as_in_the_crate() -> None:
+    rows = load_rust_fec_fixtures()["vault_adversarial"]
+    assert len(rows) == 335
+    for row in rows:
+        vault = CryptoVault(
+            Argon2Kdf(), Aes256GcmSivCipher(), fec_from_spec(row["fec"])
+        )
+        if "cap" in row:
+            vault = vault.with_max_blob_len(row["cap"])
+        key = bytes.fromhex(row["key"])
+        try:
+            if row["op"] == "unwrap":
+                got: dict[str, object] = {
+                    "ok": vault.unwrap_key(
+                        key, bytes.fromhex(row["salt"]), row["blob"]
+                    ).hex()
+                }
+            else:
+                got = {"ok": vault.decrypt_with_key(key, row["blob"])}
+        except CryptoVaultError as error:
+            got = {"error": str(error)}
+        assert got == row["expect"], f"{row['fec']['name']}: {row['label']}"
+
+
+def test_crate_default_blob_of_the_recommended_size_opens() -> None:
+    row = load_rust_fec_fixtures()["vault_large"]
+    assert len(row["plaintext"].encode("utf-8")) == RECOMMENDED_MAX_PAYLOAD
+    got = CryptoVault.default().decrypt_with_key(bytes.fromhex(row["key"]), row["blob"])
+    assert got == row["plaintext"]
