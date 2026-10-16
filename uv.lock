@@ -447,7 +447,7 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "cryptography", specifier = ">=44" }]
+requires-dist = [{ name = "cryptography", specifier = ">=45.0.1" }]
 
 [package.metadata.requires-dev]
 dev = [

@@ -18,7 +18,9 @@ classifiers = [
     "Topic :: Security :: Cryptography",
     "Typing :: Typed",
 ]
-dependencies = ["cryptography>=44"]
+# 45.0.1 is the first release whose AES-GCM-SIV accepts an empty plaintext,
+# which the crate allows (44.x raises "data must not be zero length").
+dependencies = ["cryptography>=45.0.1"]
 
 [project.urls]
 Repository = "https://github.com/BolivarTech/CryptoVault-Python"
