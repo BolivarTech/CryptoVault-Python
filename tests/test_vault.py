@@ -12,7 +12,12 @@ import pytest
 
 from cryptovault.cipher import Aes256GcmSivCipher
 from cryptovault.constants import MAX_B64_LEN, MAX_PLAINTEXT_LEN
-from cryptovault.error import CryptoVaultError, EncodingError, InvalidInputError
+from cryptovault.error import (
+    CipherError,
+    CryptoVaultError,
+    EncodingError,
+    InvalidInputError,
+)
 from cryptovault.fec import NoFec
 from cryptovault.kdf import Argon2Kdf
 from cryptovault.vault import CryptoVault
@@ -211,3 +216,20 @@ def test_envelope_binds_salt_and_purpose_as_in_the_crate() -> None:
         if got != case["expect"]:
             mismatches.append((case["label"], got, case["expect"]))
     assert mismatches == []
+
+
+@pytest.mark.parametrize(
+    ("salt", "material"),
+    [(bytes(range(16)), bytes(range(32))), (b"", bytes(32)), (bytes(16), b"")],
+    ids=["dek", "empty-salt", "empty-material"],
+)
+def test_wrap_key_round_trips_only_under_the_same_salt(
+    salt: bytes, material: bytes
+) -> None:
+    vault, kek = make_vault(), bytes(range(0x60, 0x80))
+    wrapped = vault.wrap_key(kek, salt, material)
+    assert vault.unwrap_key(kek, salt, wrapped) == material
+    with pytest.raises(CipherError):
+        vault.unwrap_key(kek, salt + b"\x00", wrapped)
+    with pytest.raises(CipherError):
+        vault.decrypt_with_key(kek, wrapped)

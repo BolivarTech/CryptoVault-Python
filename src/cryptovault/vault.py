@@ -69,6 +69,10 @@ class CryptoVault:
         capped._max_blob_len = min(cap, MAX_BLOB_LEN)
         return capped
 
+    def wrap_key(self, kek: bytes, salt: bytes, key_material: bytes) -> str:
+        """Wrap key material."""
+        raise NotImplementedError
+
     def unwrap_key(self, kek: bytes, salt: bytes, wrapped: str) -> bytes:
         """Unwrap key material."""
         return self._decrypt_bytes(kek, wrapped, _AAD_PURPOSE_ENVELOPE, salt)
