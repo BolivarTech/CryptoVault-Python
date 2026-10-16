@@ -283,7 +283,7 @@ jobs:
           path: dist
       # `skip-existing` makes a re-run idempotent when a previous run published
       # but failed before tagging.
-      - uses: pypa/gh-action-pypi-publish@release/v1
+      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
         with:
           skip-existing: true
 
@@ -325,7 +325,7 @@ jobs:
           cat release-notes.md
       # `tag_name` on a branch ref creates the tag at this SHA and the release
       # in one step, so the tag only exists once everything above succeeded.
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           tag_name: ${{ needs.gate.outputs.tag }}
           name: ${{ needs.gate.outputs.tag }}
