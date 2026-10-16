@@ -3,7 +3,7 @@
 # Date: 2026-10-16
 """Reed-Solomon RS(255, 223) outer code, the crate's ``ReedSolomonCodec``."""
 
-from cryptovault.constants import RS_BLOCK, RS_DATA, RS_PARITY
+from cryptovault.constants import MAX_BLOB_LEN, RS_BLOCK, RS_DATA, RS_PARITY
 from cryptovault.error import ErrorCorrectionError, InvalidInputError
 from cryptovault.fec._reedsolomon import (
     ReedSolomon,
@@ -58,6 +58,15 @@ class ReedSolomonCodec:
             received: The base64-decoded blob.
 
         Returns:
-            The data length to recover.
+            The data length to recover: ``RS_DATA`` per codeword.
+
+        Raises:
+            InvalidInputError: If ``received`` is longer than ``MAX_BLOB_LEN``
+                or is not one or more whole codewords.
         """
-        raise NotImplementedError
+        if len(received) > MAX_BLOB_LEN:
+            raise InvalidInputError("input exceeds maximum size")
+        blocks, rest = divmod(len(received), RS_BLOCK)
+        if rest or blocks < 1:
+            raise InvalidInputError("malformed blob")
+        return blocks * RS_DATA
