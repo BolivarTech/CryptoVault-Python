@@ -8,7 +8,7 @@ from collections.abc import Iterator
 
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms
 
-from cryptovault.constants import NONCE_LEN, RS_BLOCK, RS_INTERLEAVE_MAX
+from cryptovault.constants import KEY_LEN, NONCE_LEN, RS_BLOCK, RS_INTERLEAVE_MAX
 from cryptovault.error import InvalidInputError
 
 
@@ -92,8 +92,14 @@ class CsprngLayer:
     """
 
     def __init__(self, seed: bytes) -> None:
-        """Store the seed."""
-        self._seed = seed
+        """Validate and store a copy of the seed.
+
+        Raises:
+            InvalidInputError: If ``seed`` is not exactly ``KEY_LEN`` bytes.
+        """
+        if len(seed) != KEY_LEN:
+            raise InvalidInputError(f"interleaver seed must be exactly {KEY_LEN} bytes")
+        self._seed = bytes(seed)
 
     def interleave(self, stream: bytes, window_len: int) -> bytes:
         """Shuffle each window of ``stream``.
