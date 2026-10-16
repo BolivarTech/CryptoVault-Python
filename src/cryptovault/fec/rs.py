@@ -3,6 +3,11 @@
 # Date: 2026-10-16
 """Reed-Solomon RS(255, 223) outer code, the crate's ``ReedSolomonCodec``."""
 
+from cryptovault.constants import RS_DATA, RS_PARITY
+from cryptovault.fec._reedsolomon import ReedSolomon
+
+_RS = ReedSolomon(RS_PARITY, RS_DATA)
+
 
 class ReedSolomonCodec:
     """Reed-Solomon RS(255, 223) outer code."""
@@ -16,4 +21,4 @@ class ReedSolomonCodec:
         Returns:
             The codewords.
         """
-        raise NotImplementedError
+        return _RS.encode(data)
