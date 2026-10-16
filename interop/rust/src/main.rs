@@ -71,6 +71,30 @@ fn hkdf() -> Vec<Value> {
         .collect()
 }
 
+/// Data-path blobs the crate encrypts, from empty to `RECOMMENDED_MAX_PAYLOAD`;
+/// read by `test_every_crate_data_blob_opens_to_its_plaintext` (key `data`).
+fn data(vault: &CryptoVault) -> Vec<Value> {
+    let key = counting(0x00, KEY_LEN);
+    let plaintexts = [
+        String::new(),
+        "a".to_string(),
+        "sk-secret".to_string(),
+        "\u{f1}and\u{fa} \u{1f510} \u{4e2d}\u{6587}".to_string(),
+        "x".repeat(1000),
+        "0123456789abcdef".repeat(RECOMMENDED_MAX_PAYLOAD / 16),
+    ];
+    plaintexts
+        .iter()
+        .map(|pt| {
+            json!({
+                "key": hex::encode(&key),
+                "plaintext": pt,
+                "blob": vault.encrypt_with_key(&key, pt).expect("encrypt"),
+            })
+        })
+        .collect()
+}
+
 /// Prints the full fixture document.
 fn fixtures() -> ExitCode {
     let vault = vault();
@@ -87,6 +111,7 @@ fn fixtures() -> ExitCode {
         },
         "derive": derive(&vault),
         "hkdf": hkdf(),
+        "data": data(&vault),
     });
     println!("{}", serde_json::to_string_pretty(&document).expect("serializable"));
     ExitCode::SUCCESS
