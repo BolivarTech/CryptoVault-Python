@@ -9,10 +9,6 @@
 
 use std::process::ExitCode;
 
-use cryptovault::{
-    ARGON2_M_KIB, ARGON2_P, ARGON2_T, BLOB_VERSION, HEADER_LEN, KEY_LEN, MAX_B64_LEN,
-    MAX_BLOB_LEN, MAX_PLAINTEXT_LEN, NONCE_LEN, RECOMMENDED_MAX_PAYLOAD, SALT_LEN, TAG_LEN,
-};
 use aes_gcm_siv::aead::{Aead, KeyInit, Payload};
 use aes_gcm_siv::{Aes256GcmSiv, Nonce};
 use base64::engine::general_purpose::STANDARD;
@@ -20,6 +16,10 @@ use base64::Engine;
 use cryptovault::cipher::Aes256GcmSivCipher;
 use cryptovault::kdf::Argon2Kdf;
 use cryptovault::{CryptoVault, NoFec, Result};
+use cryptovault::{
+    ARGON2_M_KIB, ARGON2_P, ARGON2_T, BLOB_VERSION, HEADER_LEN, KEY_LEN, MAX_B64_LEN, MAX_BLOB_LEN,
+    MAX_PLAINTEXT_LEN, NONCE_LEN, RECOMMENDED_MAX_PAYLOAD, SALT_LEN, TAG_LEN,
+};
 use rand::RngCore;
 use serde_json::{json, Value};
 
@@ -51,9 +51,15 @@ fn adversarial(vault: &CryptoVault) -> Vec<Value> {
         ("url-safe dash", format!("-{}", &base[1..])),
         ("url-safe underscore", format!("_{}", &base[1..])),
         ("non-ascii character", format!("{base}\u{e9}")),
-        ("length not a multiple of four", base[..base.len() - 2].to_string()),
+        (
+            "length not a multiple of four",
+            base[..base.len() - 2].to_string(),
+        ),
         ("non-canonical trailing bits, one pad", non_canonical(&base)),
-        ("non-canonical trailing bits, two pads", non_canonical(&short)),
+        (
+            "non-canonical trailing bits, two pads",
+            non_canonical(&short),
+        ),
         ("canonical two pads", short.clone()),
     ];
     for (label, blob) in &encodings {
@@ -95,8 +101,14 @@ fn adversarial(vault: &CryptoVault) -> Vec<Value> {
     let declared = [
         ("declared length 1", 1u32),
         ("declared length 3", 3),
-        ("declared length MAX_PLAINTEXT_LEN", MAX_PLAINTEXT_LEN as u32),
-        ("declared length MAX_PLAINTEXT_LEN + 1", MAX_PLAINTEXT_LEN as u32 + 1),
+        (
+            "declared length MAX_PLAINTEXT_LEN",
+            MAX_PLAINTEXT_LEN as u32,
+        ),
+        (
+            "declared length MAX_PLAINTEXT_LEN + 1",
+            MAX_PLAINTEXT_LEN as u32 + 1,
+        ),
         ("declared length u32::MAX", u32::MAX),
     ];
     for (label, len) in declared {
@@ -108,7 +120,9 @@ fn adversarial(vault: &CryptoVault) -> Vec<Value> {
     // Group "envelope", read by test_envelope_binds_salt_and_purpose_as_in_the_crate.
     let salt_a = counting(0x10, SALT_LEN);
     let salt_b = counting(0x20, SALT_LEN);
-    let wrapped = vault.wrap_key(&key, &salt_a, &counting(0x40, KEY_LEN)).expect("wrap");
+    let wrapped = vault
+        .wrap_key(&key, &salt_a, &counting(0x40, KEY_LEN))
+        .expect("wrap");
     let unwraps: [(&str, &[u8], &[u8], &str); 5] = [
         ("envelope with its salt", &key, &salt_a, &wrapped),
         ("envelope with another salt", &key, &salt_b, &wrapped),
@@ -127,7 +141,13 @@ fn adversarial(vault: &CryptoVault) -> Vec<Value> {
             "expect": outcome(vault.unwrap_key(kek, salt, blob), |k| json!(hex::encode(&*k))),
         }));
     }
-    cases.push(decrypt_case(vault, "envelope", "envelope opened as data", &key, &wrapped));
+    cases.push(decrypt_case(
+        vault,
+        "envelope",
+        "envelope opened as data",
+        &key,
+        &wrapped,
+    ));
     // Group "utf8", read by test_non_utf8_plaintext_reports_the_crate_utf8_error.
     let invalid_utf8: [(&str, &[u8]); 9] = [
         ("lone continuation byte", &[0x80]),
@@ -161,7 +181,13 @@ fn encrypt_raw_data(master: &[u8], plaintext: &[u8]) -> String {
     aad.extend_from_slice(&header);
     let ct = Aes256GcmSiv::new_from_slice(&aead_key)
         .expect("32-byte key")
-        .encrypt(Nonce::from_slice(&nonce), Payload { msg: plaintext, aad: &aad })
+        .encrypt(
+            Nonce::from_slice(&nonce),
+            Payload {
+                msg: plaintext,
+                aad: &aad,
+            },
+        )
         .expect("in-memory encryption cannot fail");
     let mut blob = header;
     blob.extend_from_slice(&nonce);
@@ -174,8 +200,14 @@ fn encrypt_raw_data(master: &[u8], plaintext: &[u8]) -> String {
 fn non_canonical(b64: &str) -> String {
     const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut chars = b64.as_bytes().to_vec();
-    let last = chars.iter().rposition(|c| *c != b'=').expect("non-empty base64");
-    let index = ALPHABET.iter().position(|c| *c == chars[last]).expect("alphabet char");
+    let last = chars
+        .iter()
+        .rposition(|c| *c != b'=')
+        .expect("non-empty base64");
+    let index = ALPHABET
+        .iter()
+        .position(|c| *c == chars[last])
+        .expect("alphabet char");
     chars[last] = ALPHABET[index ^ 1];
     String::from_utf8(chars).expect("ASCII")
 }
@@ -195,7 +227,11 @@ fn decrypt_case(vault: &CryptoVault, group: &str, label: &str, key: &[u8], blob:
 
 /// Builds the AEAD-only vault every fixture is produced with.
 fn vault() -> CryptoVault {
-    CryptoVault::new(Box::new(Argon2Kdf), Box::new(Aes256GcmSivCipher), Box::new(NoFec))
+    CryptoVault::new(
+        Box::new(Argon2Kdf),
+        Box::new(Aes256GcmSivCipher),
+        Box::new(NoFec),
+    )
 }
 
 /// Returns `len` bytes counting up from `start`, a readable deterministic value.
@@ -237,13 +273,17 @@ fn derive(vault: &CryptoVault) -> Vec<Value> {
 /// AEAD sub-keys the crate's public `expand_aead_key` derives from master keys;
 /// read by `test_aead_subkey_matches_rfc_5869_and_the_crate` (fixture key `hkdf`).
 fn hkdf() -> Vec<Value> {
-    [counting(0x00, KEY_LEN), vec![0xff; KEY_LEN], counting(0x60, KEY_LEN)]
-        .iter()
-        .map(|master| {
-            let aead_key = cryptovault::kdf::expand_aead_key(master).expect("expand");
-            json!({ "master": hex::encode(master), "aead_key": hex::encode(&*aead_key) })
-        })
-        .collect()
+    [
+        counting(0x00, KEY_LEN),
+        vec![0xff; KEY_LEN],
+        counting(0x60, KEY_LEN),
+    ]
+    .iter()
+    .map(|master| {
+        let aead_key = cryptovault::kdf::expand_aead_key(master).expect("expand");
+        json!({ "master": hex::encode(master), "aead_key": hex::encode(&*aead_key) })
+    })
+    .collect()
 }
 
 /// Data-path blobs the crate encrypts, from empty to `RECOMMENDED_MAX_PAYLOAD`;
@@ -334,16 +374,99 @@ fn fixtures() -> ExitCode {
         "max_blob_len": max_blob_len(&vault),
         "envelope": envelope(&vault),
     });
-    println!("{}", serde_json::to_string_pretty(&document).expect("serializable"));
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&document).expect("serializable")
+    );
     ExitCode::SUCCESS
+}
+
+/// Decodes a hex field of a case, naming the field when it is malformed.
+fn hex_field(case: &Value, field: &str) -> std::result::Result<Vec<u8>, String> {
+    let text = case[field]
+        .as_str()
+        .ok_or(format!("missing field {field}"))?;
+    hex::decode(text).map_err(|e| format!("field {field} is not hex: {e}"))
+}
+
+/// Checks one Python-produced case against the crate; `Ok(())` when it opens to
+/// the expected value.
+fn verify_case(vault: &CryptoVault, kind: &str, case: &Value) -> std::result::Result<(), String> {
+    let blob = case["blob"].as_str().ok_or("missing field blob")?;
+    match kind {
+        "data" => {
+            let key = hex_field(case, "key")?;
+            let expected = case["plaintext"]
+                .as_str()
+                .ok_or("missing field plaintext")?;
+            let got = vault
+                .decrypt_with_key(&key, blob)
+                .map_err(|e| e.to_string())?;
+            (got.as_str() == expected)
+                .then_some(())
+                .ok_or("plaintext differs".into())
+        }
+        "envelope" => {
+            let kek = hex_field(case, "kek")?;
+            let salt = hex_field(case, "salt")?;
+            let expected = hex_field(case, "key_material")?;
+            let got = vault
+                .unwrap_key(&kek, &salt, blob)
+                .map_err(|e| e.to_string())?;
+            (*got == expected)
+                .then_some(())
+                .ok_or("key material differs".into())
+        }
+        other => Err(format!("unknown case kind {other}")),
+    }
+}
+
+/// Verifies every case of a Python-produced document. Exit 0 when all pass and
+/// there was at least one, 1 on any mismatch, 2 when the file cannot be read;
+/// read by `test_the_rust_crate_opens_every_blob_python_produces`.
+fn verify(path: &str) -> ExitCode {
+    let text = match std::fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(e) => {
+            eprintln!("cannot read {path}: {e}");
+            return ExitCode::from(2);
+        }
+    };
+    let document: Value = match serde_json::from_str(&text) {
+        Ok(document) => document,
+        Err(e) => {
+            eprintln!("{path} is not JSON: {e}");
+            return ExitCode::from(2);
+        }
+    };
+    let vault = vault();
+    let (mut passed, mut failed) = (0usize, 0usize);
+    for kind in ["data", "envelope"] {
+        for (index, case) in document[kind].as_array().into_iter().flatten().enumerate() {
+            match verify_case(&vault, kind, case) {
+                Ok(()) => passed += 1,
+                Err(reason) => {
+                    failed += 1;
+                    println!("FAIL {kind}[{index}]: {reason}");
+                }
+            }
+        }
+    }
+    println!("verified {passed} passed, {failed} failed");
+    if failed == 0 && passed > 0 {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    }
 }
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().collect();
     match args.get(1).map(String::as_str) {
         Some("fixtures") => fixtures(),
+        Some("verify") if args.len() == 3 => verify(&args[2]),
         _ => {
-            eprintln!("usage: cryptovault-interop fixtures");
+            eprintln!("usage: cryptovault-interop fixtures | verify <python-blobs.json>");
             ExitCode::from(2)
         }
     }
