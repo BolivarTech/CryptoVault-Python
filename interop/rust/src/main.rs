@@ -13,10 +13,55 @@ use cryptovault::{
     ARGON2_M_KIB, ARGON2_P, ARGON2_T, BLOB_VERSION, HEADER_LEN, KEY_LEN, MAX_B64_LEN,
     MAX_BLOB_LEN, MAX_PLAINTEXT_LEN, NONCE_LEN, RECOMMENDED_MAX_PAYLOAD, SALT_LEN, TAG_LEN,
 };
-use serde_json::json;
+use cryptovault::cipher::Aes256GcmSivCipher;
+use cryptovault::kdf::Argon2Kdf;
+use cryptovault::{CryptoVault, NoFec, Result};
+use serde_json::{json, Value};
+
+/// Builds the AEAD-only vault every fixture is produced with.
+fn vault() -> CryptoVault {
+    CryptoVault::new(Box::new(Argon2Kdf), Box::new(Aes256GcmSivCipher), Box::new(NoFec))
+}
+
+/// Returns `len` bytes counting up from `start`, a readable deterministic value.
+fn counting(start: u8, len: usize) -> Vec<u8> {
+    (0..len).map(|i| start.wrapping_add(i as u8)).collect()
+}
+
+/// Maps a crate result to `{"ok": <value>}` or `{"error": "<Display>"}`.
+fn outcome<T>(result: Result<T>, render: impl Fn(T) -> Value) -> Value {
+    match result {
+        Ok(value) => json!({ "ok": render(value) }),
+        Err(error) => json!({ "error": error.to_string() }),
+    }
+}
+
+/// `derive_key` outputs and errors for a fixed set of passwords and salts.
+fn derive(vault: &CryptoVault) -> Vec<Value> {
+    let inputs = [
+        ("master-passphrase", vec![0u8; SALT_LEN]),
+        ("correct horse battery staple", counting(0x10, SALT_LEN)),
+        ("\u{f1}and\u{fa}-\u{1f510}", counting(0xf0, SALT_LEN)),
+        ("", vec![0u8; SALT_LEN]),
+        ("pw", vec![0u8; 15]),
+        ("pw", vec![0u8; 17]),
+        ("pw", Vec::new()),
+    ];
+    inputs
+        .iter()
+        .map(|(password, salt)| {
+            json!({
+                "password": password,
+                "salt": hex::encode(salt),
+                "expect": outcome(vault.derive_key(password, salt), |k| json!(hex::encode(&*k))),
+            })
+        })
+        .collect()
+}
 
 /// Prints the full fixture document.
 fn fixtures() -> ExitCode {
+    let vault = vault();
     let document = json!({
         "crate": "cryptovault 0.3.0",
         "fec": "NoFec",
@@ -28,6 +73,7 @@ fn fixtures() -> ExitCode {
             "MAX_BLOB_LEN": MAX_BLOB_LEN, "MAX_B64_LEN": MAX_B64_LEN,
             "ARGON2_M_KIB": ARGON2_M_KIB, "ARGON2_T": ARGON2_T, "ARGON2_P": ARGON2_P,
         },
+        "derive": derive(&vault),
     });
     println!("{}", serde_json::to_string_pretty(&document).expect("serializable"));
     ExitCode::SUCCESS

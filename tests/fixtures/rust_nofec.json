@@ -15,5 +15,56 @@
     "TAG_LEN": 16
   },
   "crate": "cryptovault 0.3.0",
+  "derive": [
+    {
+      "expect": {
+        "ok": "2c3e66efcaf573a7e4e451fe98e8cab7160f1c3c5e1075f7bbe786201417dcd5"
+      },
+      "password": "master-passphrase",
+      "salt": "00000000000000000000000000000000"
+    },
+    {
+      "expect": {
+        "ok": "1cd84e588c72f1d0bb3041fdd8a32de5ec738487c23ac9c5d84f119e05858bf8"
+      },
+      "password": "correct horse battery staple",
+      "salt": "101112131415161718191a1b1c1d1e1f"
+    },
+    {
+      "expect": {
+        "ok": "bffb0eb9ffeb8a16af1a50e0df9f6a6989a05eb6c06fa9b8ab531c909273a96f"
+      },
+      "password": "ñandú-🔐",
+      "salt": "f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff"
+    },
+    {
+      "expect": {
+        "error": "Invalid input: password must not be empty"
+      },
+      "password": "",
+      "salt": "00000000000000000000000000000000"
+    },
+    {
+      "expect": {
+        "error": "Invalid input: salt must be exactly 16 bytes"
+      },
+      "password": "pw",
+      "salt": "000000000000000000000000000000"
+    },
+    {
+      "expect": {
+        "error": "Invalid input: salt must be exactly 16 bytes"
+      },
+      "password": "pw",
+      "salt": "0000000000000000000000000000000000"
+    },
+    {
+      "expect": {
+        "error": "Invalid input: salt must be exactly 16 bytes"
+      },
+      "password": "pw",
+      "salt": ""
+    }
+  ],
   "fec": "NoFec"
 }
