@@ -13,11 +13,14 @@ use cryptovault::{
     ARGON2_M_KIB, ARGON2_P, ARGON2_T, BLOB_VERSION, HEADER_LEN, KEY_LEN, MAX_B64_LEN,
     MAX_BLOB_LEN, MAX_PLAINTEXT_LEN, NONCE_LEN, RECOMMENDED_MAX_PAYLOAD, SALT_LEN, TAG_LEN,
 };
+use aes_gcm_siv::aead::{Aead, KeyInit, Payload};
+use aes_gcm_siv::{Aes256GcmSiv, Nonce};
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
 use cryptovault::cipher::Aes256GcmSivCipher;
 use cryptovault::kdf::Argon2Kdf;
 use cryptovault::{CryptoVault, NoFec, Result};
+use rand::RngCore;
 use serde_json::{json, Value};
 
 /// Adversarial inputs paired with the crate's answers, one group per Python
@@ -68,7 +71,45 @@ fn adversarial(vault: &CryptoVault) -> Vec<Value> {
     for (label, other) in &keys {
         cases.push(decrypt_case(vault, "key", label, other, &base));
     }
+    // Group "utf8", read by test_non_utf8_plaintext_reports_the_crate_utf8_error.
+    let invalid_utf8: [(&str, &[u8]); 9] = [
+        ("lone continuation byte", &[0x80]),
+        ("invalid lead byte", &[0xff]),
+        ("valid prefix then invalid", b"ok\x80tail"),
+        ("two-byte sequence cut short", &[0x61, 0xc3]),
+        ("three-byte sequence cut short", &[0xe2, 0x82]),
+        ("four-byte sequence cut short", &[0xf0, 0x90, 0x80]),
+        ("bad continuation", &[0xc3, 0x28]),
+        ("encoded surrogate", &[0xed, 0xa0, 0x80]),
+        ("overlong encoding", &[0xc0, 0xaf]),
+    ];
+    for (label, bytes) in invalid_utf8 {
+        let blob = encrypt_raw_data(&key, bytes);
+        cases.push(decrypt_case(vault, "utf8", label, &key, &blob));
+    }
     cases
+}
+
+/// Encrypts arbitrary bytes on the data path, which the public API only allows
+/// for UTF-8 text. Rebuilds the crate's layout `header ‖ nonce ‖ ct ‖ tag` with
+/// `AAD = 0x01 ‖ header`; the crate itself then reports the decryption error.
+fn encrypt_raw_data(master: &[u8], plaintext: &[u8]) -> String {
+    const AAD_PURPOSE_DATA: u8 = 0x01;
+    let aead_key = cryptovault::kdf::expand_aead_key(master).expect("expand");
+    let mut nonce = [0u8; NONCE_LEN];
+    rand::rngs::OsRng.fill_bytes(&mut nonce);
+    let mut header = vec![BLOB_VERSION];
+    header.extend_from_slice(&(plaintext.len() as u32).to_le_bytes());
+    let mut aad = vec![AAD_PURPOSE_DATA];
+    aad.extend_from_slice(&header);
+    let ct = Aes256GcmSiv::new_from_slice(&aead_key)
+        .expect("32-byte key")
+        .encrypt(Nonce::from_slice(&nonce), Payload { msg: plaintext, aad: &aad })
+        .expect("in-memory encryption cannot fail");
+    let mut blob = header;
+    blob.extend_from_slice(&nonce);
+    blob.extend_from_slice(&ct);
+    STANDARD.encode(blob)
 }
 
 /// Replaces the last base64 character before the padding with its neighbour in
