@@ -14,6 +14,7 @@ from cryptovault.constants import (
     KEY_LEN,
     MAX_B64_LEN,
     MAX_BLOB_LEN,
+    MAX_PLAINTEXT_LEN,
     NONCE_LEN,
 )
 from cryptovault.error import EncodingError, InvalidInputError
@@ -68,7 +69,14 @@ class CryptoVault:
 
     def encrypt_with_key(self, key: bytes, plaintext: str) -> str:
         """Encrypt text into a data blob."""
-        data = plaintext.encode("utf-8")
+        if len(key) != KEY_LEN:
+            raise InvalidInputError(f"master key must be exactly {KEY_LEN} bytes")
+        try:
+            data = plaintext.encode("utf-8")
+        except UnicodeEncodeError as exc:
+            raise EncodingError("plaintext is not valid UTF-8") from exc
+        if len(data) > MAX_PLAINTEXT_LEN:
+            raise InvalidInputError("plaintext exceeds maximum size")
         header = bytes([BLOB_VERSION]) + struct.pack("<I", len(data))
         aad = bytes([_AAD_PURPOSE_DATA]) + header
         nonce = sample_nonce()
