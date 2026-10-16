@@ -9,8 +9,8 @@ import struct
 
 from cryptovault._blob import decode_blob
 from cryptovault.cipher import Aes256GcmSivCipher
-from cryptovault.constants import NONCE_LEN
-from cryptovault.error import EncodingError
+from cryptovault.constants import KEY_LEN, NONCE_LEN
+from cryptovault.error import EncodingError, InvalidInputError
 from cryptovault.fec import NoFec
 from cryptovault.kdf import Argon2Kdf, expand_aead_key
 
@@ -55,6 +55,8 @@ class CryptoVault:
 
     def decrypt_with_key(self, key: bytes, blob: str) -> str:
         """Decrypt a data blob."""
+        if len(key) != KEY_LEN:
+            raise InvalidInputError(f"master key must be exactly {KEY_LEN} bytes")
         received = _decode_base64(blob)
         version, plaintext_len, body = decode_blob(self._fec, received)
         header = bytes([version]) + struct.pack("<I", plaintext_len)
