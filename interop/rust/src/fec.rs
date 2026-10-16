@@ -8,7 +8,7 @@
 
 use std::process::ExitCode;
 
-use cryptovault::fec::{ErrorCorrection, ReedSolomonCodec};
+use cryptovault::fec::{BlockInterleaver, ErrorCorrection, ReedSolomonCodec};
 use cryptovault::{
     MAX_BLOB_LEN, RS_BLOCK, RS_DATA, RS_INTERLEAVE_MAX, RS_PARITY, TERMINATION_OVERHEAD,
     VITERBI_CHUNK,
@@ -133,6 +133,34 @@ fn rs_validate() -> Vec<Value> {
         .collect()
 }
 
+/// Stream lengths that cover empty, partial, whole and multi-window inputs.
+const INTERLEAVE_LENGTHS: [usize; 6] = [
+    0,
+    100,
+    RS_BLOCK,
+    5 * RS_BLOCK + 100,
+    10 * RS_BLOCK,
+    16 * RS_BLOCK + 7,
+];
+
+/// Block-interleaver outputs for depths 1, 2, 5 and 16; read by
+/// `test_block_interleaver_permutes_as_the_crate_and_inverts`.
+fn block_interleave() -> Vec<Value> {
+    let mut cases = Vec::new();
+    for depth in [1usize, 2, 5, RS_INTERLEAVE_MAX] {
+        let interleaver = BlockInterleaver::new(depth).expect("valid depth");
+        for len in INTERLEAVE_LENGTHS {
+            let stream = pattern((depth * 1000 + len) as u32, len);
+            cases.push(json!({
+                "depth": depth,
+                "stream": hex::encode(&stream),
+                "interleaved": hex::encode(interleaver.interleave(&stream)),
+            }));
+        }
+    }
+    cases
+}
+
 /// Prints the full FEC fixture document.
 pub fn fec_fixtures() -> ExitCode {
     let document = json!({
@@ -145,6 +173,7 @@ pub fn fec_fixtures() -> ExitCode {
         "rs_encode": rs_encode(),
         "rs_decode": rs_decode(),
         "rs_validate": rs_validate(),
+        "block_interleave": block_interleave(),
     });
     println!(
         "{}",
