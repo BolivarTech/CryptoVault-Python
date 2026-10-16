@@ -9,13 +9,14 @@
 use std::process::ExitCode;
 
 use cryptovault::fec::{
-    BlockInterleaver, CsprngLayer, ErrorCorrection, Interleaver, ReedSolomonCodec,
+    BlockInterleaver, CsprngLayer, ErrorCorrection, Interleaver, ReedSolomonCodec, ViterbiCodec,
 };
 use cryptovault::{
     KEY_LEN, MAX_BLOB_LEN, RS_BLOCK, RS_DATA, RS_INTERLEAVE_MAX, RS_PARITY, TERMINATION_OVERHEAD,
     VITERBI_CHUNK,
 };
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 
 /// Returns `len` bytes of a fixed pseudo-random sequence seeded by `seed`.
 fn pattern(seed: u32, len: usize) -> Vec<u8> {
@@ -262,6 +263,36 @@ fn interleaver() -> Vec<Value> {
         .collect()
 }
 
+/// Hex SHA-256 of `bytes`, which keeps long coded streams out of the fixture.
+fn sha256_hex(bytes: &[u8]) -> String {
+    hex::encode(Sha256::digest(bytes))
+}
+
+/// `ViterbiCodec::encode` lengths and digests, from empty to two sub-blocks;
+/// read by `test_viterbi_encode_matches_the_crate_including_chunking`.
+fn viterbi_encode() -> Vec<Value> {
+    [
+        0usize,
+        1,
+        33,
+        RS_BLOCK,
+        5 * RS_BLOCK,
+        VITERBI_CHUNK + RS_BLOCK,
+    ]
+    .iter()
+    .map(|&len| {
+        let stream = pattern(len as u32 + 90, len);
+        let encoded = ViterbiCodec.encode(&stream);
+        json!({
+            "stream_len": len,
+            "stream": hex::encode(&stream),
+            "encoded_len": encoded.len(),
+            "encoded_sha256": sha256_hex(&encoded),
+        })
+    })
+    .collect()
+}
+
 /// Prints the full FEC fixture document.
 pub fn fec_fixtures() -> ExitCode {
     let document = json!({
@@ -279,6 +310,7 @@ pub fn fec_fixtures() -> ExitCode {
         "csprng_interleave": csprng_interleave(),
         "csprng_seed": csprng_seed(),
         "interleaver": interleaver(),
+        "viterbi_encode": viterbi_encode(),
     });
     println!(
         "{}",
