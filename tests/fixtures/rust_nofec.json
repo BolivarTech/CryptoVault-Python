@@ -1,0 +1,19 @@
+{
+  "constants": {
+    "ARGON2_M_KIB": 65536,
+    "ARGON2_P": 4,
+    "ARGON2_T": 3,
+    "BLOB_VERSION": 1,
+    "HEADER_LEN": 5,
+    "KEY_LEN": 32,
+    "MAX_B64_LEN": 31975220,
+    "MAX_BLOB_LEN": 23981412,
+    "MAX_PLAINTEXT_LEN": 10485760,
+    "NONCE_LEN": 12,
+    "RECOMMENDED_MAX_PAYLOAD": 131072,
+    "SALT_LEN": 16,
+    "TAG_LEN": 16
+  },
+  "crate": "cryptovault 0.3.0",
+  "fec": "NoFec"
+}
