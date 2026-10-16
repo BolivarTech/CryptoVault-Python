@@ -6,8 +6,9 @@
 import os
 
 import pytest
-from cryptography.exceptions import InvalidTag
+from cryptography.exceptions import InvalidTag, UnsupportedAlgorithm
 
+from cryptovault import cipher as cipher_module
 from cryptovault.cipher import Aes256GcmSivCipher, sample_nonce
 from cryptovault.error import CipherError
 
@@ -23,6 +24,21 @@ def test_sample_nonce_fails_closed_when_the_os_has_no_entropy(
         sample_nonce()
     assert caught.value.message.startswith("OsRng nonce sampling failed: ")
     assert isinstance(caught.value.__cause__, OSError)
+
+
+@pytest.mark.parametrize("operation", ["encrypt", "decrypt"])
+def test_backend_without_gcm_siv_is_a_cipher_error(
+    monkeypatch: pytest.MonkeyPatch, operation: str
+) -> None:
+    def unsupported(key: bytes) -> None:
+        raise UnsupportedAlgorithm("AES-GCM-SIV is not supported by this OpenSSL")
+
+    monkeypatch.setattr(cipher_module, "AESGCMSIV", unsupported)
+    method = getattr(Aes256GcmSivCipher(), operation)
+    with pytest.raises(CipherError) as caught:
+        method(bytes(32), bytes(12), b"", bytes(16))
+    assert caught.value.message.startswith("AES-256-GCM-SIV is unavailable: ")
+    assert isinstance(caught.value.__cause__, UnsupportedAlgorithm)
 
 
 # RFC 8452, Appendix C.2 (AEAD_AES_256_GCM_SIV): key, nonce, aad, plaintext,
