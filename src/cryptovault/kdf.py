@@ -3,7 +3,7 @@
 # Date: 2026-10-16
 """Key-derivation strategy: Argon2id master key, HKDF-SHA256 sub-keys."""
 
-from typing import Final, Protocol, runtime_checkable
+from typing import Final, Protocol
 
 from cryptography.exceptions import UnsupportedAlgorithm
 from cryptography.hazmat.primitives import hashes
@@ -17,7 +17,6 @@ _HKDF_INFO_AEAD: Final = b"cryptovault:v1:aead"
 """HKDF ``info`` label of the AEAD sub-key."""
 
 
-@runtime_checkable
 class KeyDerivation(Protocol):
     """Master-key derivation strategy, the crate's ``KeyDerivation`` trait."""
 

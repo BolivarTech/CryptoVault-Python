@@ -4,7 +4,7 @@
 """AEAD strategy: AES-256-GCM-SIV (RFC 8452) from ``cryptography``."""
 
 import os
-from typing import Final, Protocol, runtime_checkable
+from typing import Final, Protocol
 
 from cryptography.exceptions import InvalidTag, UnsupportedAlgorithm
 from cryptography.hazmat.primitives.ciphers.aead import AESGCMSIV
@@ -33,7 +33,6 @@ def sample_nonce() -> bytes:
         raise CipherError(f"OsRng nonce sampling failed: {exc}") from exc
 
 
-@runtime_checkable
 class AuthenticatedCipher(Protocol):
     """AEAD strategy, the crate's ``AuthenticatedCipher`` trait."""
 

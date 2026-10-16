@@ -26,11 +26,11 @@ class ReversingFec:
 
 
 def test_shipped_and_custom_strategies_satisfy_the_protocols() -> None:
-    assert isinstance(Argon2Kdf(), KeyDerivation)
-    assert isinstance(Aes256GcmSivCipher(), AuthenticatedCipher)
-    assert isinstance(NoFec(), ErrorCorrection)
-    assert isinstance(ReversingFec(), ErrorCorrection)
-    vault = CryptoVault(Argon2Kdf(), Aes256GcmSivCipher(), ReversingFec())
+    # Structural conformance is checked statically by mypy on these bindings.
+    kdf: KeyDerivation = Argon2Kdf()
+    cipher: AuthenticatedCipher = Aes256GcmSivCipher()
+    fec: ErrorCorrection = ReversingFec()
+    vault = CryptoVault(kdf, cipher, fec)
     key = bytes(range(32))
     blob = vault.encrypt_with_key(key, "secret")
     assert vault.decrypt_with_key(key, blob) == "secret"

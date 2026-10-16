@@ -9,13 +9,12 @@ encoded it. This stage ships :class:`NoFec`, the identity codec; the crate's
 Reed-Solomon, interleaver and Viterbi codecs come in a later stage.
 """
 
-from typing import Protocol, runtime_checkable
+from typing import Protocol
 
 from cryptovault.constants import MAX_BLOB_LEN
 from cryptovault.error import InvalidInputError
 
 
-@runtime_checkable
 class ErrorCorrection(Protocol):
     """Forward-error-correction strategy, the crate's ``ErrorCorrection`` trait.
 
