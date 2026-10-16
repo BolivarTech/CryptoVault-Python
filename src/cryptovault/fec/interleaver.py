@@ -4,12 +4,44 @@
 """Interleaving stage of the concatenated FEC, the crate's ``interleaver``."""
 
 import struct
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms
 
 from cryptovault.constants import KEY_LEN, NONCE_LEN, RS_BLOCK, RS_INTERLEAVE_MAX
 from cryptovault.error import InvalidInputError
+
+
+def _permute_windows(
+    stream: bytes,
+    window_len: int,
+    perm_of: Callable[[int, int], list[int]],
+    *,
+    inverse: bool = False,
+) -> bytes:
+    """Apply a read-order permutation to each window of ``stream``.
+
+    The final window may be short; it is permuted at its actual length.
+
+    Args:
+        stream: The bytes to reorder.
+        window_len: Window span in bytes.
+        perm_of: ``perm_of(filled, window_index)`` returns the window's read
+            order: ``perm[k]`` is the source index of output byte ``k``.
+        inverse: Undo the permutation instead of applying it.
+
+    Returns:
+        The reordered bytes, as long as ``stream``.
+    """
+    out = bytearray(len(stream))
+    for index, base in enumerate(range(0, len(stream), window_len)):
+        filled = min(len(stream) - base, window_len)
+        for k, src in enumerate(perm_of(filled, index)):
+            if inverse:
+                out[base + src] = stream[base + k]
+            else:
+                out[base + k] = stream[base + src]
+    return bytes(out)
 
 
 class BlockInterleaver:
@@ -50,13 +82,9 @@ class BlockInterleaver:
         Returns:
             The interleaved stream.
         """
-        out = bytearray(len(rs_stream))
-        window = self._depth * RS_BLOCK
-        for base in range(0, len(rs_stream), window):
-            filled = min(len(rs_stream) - base, window)
-            for k, src in enumerate(self._window_perm(filled)):
-                out[base + k] = rs_stream[base + src]
-        return bytes(out)
+        return _permute_windows(
+            rs_stream, self.window_len, lambda filled, _: self._window_perm(filled)
+        )
 
     def _window_perm(self, filled: int) -> list[int]:
         """Column-major read order of a window holding ``filled`` bytes.
@@ -80,13 +108,12 @@ class BlockInterleaver:
         Returns:
             The Reed-Solomon stream.
         """
-        out = bytearray(len(stream))
-        window = self._depth * RS_BLOCK
-        for base in range(0, len(stream), window):
-            filled = min(len(stream) - base, window)
-            for k, dst in enumerate(self._window_perm(filled)):
-                out[base + dst] = stream[base + k]
-        return bytes(out)
+        return _permute_windows(
+            stream,
+            self.window_len,
+            lambda filled, _: self._window_perm(filled),
+            inverse=True,
+        )
 
 
 class CsprngLayer:
@@ -116,12 +143,7 @@ class CsprngLayer:
         Returns:
             The shuffled stream.
         """
-        out = bytearray(len(stream))
-        for index, base in enumerate(range(0, len(stream), window_len)):
-            filled = min(len(stream) - base, window_len)
-            for k, src in enumerate(self._window_perm(filled, index)):
-                out[base + k] = stream[base + src]
-        return bytes(out)
+        return _permute_windows(stream, window_len, self._window_perm)
 
     def _window_perm(self, filled: int, window_index: int) -> list[int]:
         """Fisher-Yates shuffle of ``range(filled)`` keyed by seed and window.
@@ -169,12 +191,7 @@ class CsprngLayer:
         Returns:
             The block-interleaved stream.
         """
-        out = bytearray(len(stream))
-        for index, base in enumerate(range(0, len(stream), window_len)):
-            filled = min(len(stream) - base, window_len)
-            for k, dst in enumerate(self._window_perm(filled, index)):
-                out[base + dst] = stream[base + k]
-        return bytes(out)
+        return _permute_windows(stream, window_len, self._window_perm, inverse=True)
 
 
 class Interleaver:
