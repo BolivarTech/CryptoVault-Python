@@ -3,7 +3,11 @@
 # Date: 2026-10-16
 """Interleaving stage of the concatenated FEC, the crate's ``interleaver``."""
 
-from cryptovault.constants import RS_BLOCK, RS_INTERLEAVE_MAX
+import struct
+
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms
+
+from cryptovault.constants import NONCE_LEN, RS_BLOCK, RS_INTERLEAVE_MAX
 from cryptovault.error import InvalidInputError
 
 
@@ -100,7 +104,42 @@ class CsprngLayer:
         Returns:
             The shuffled stream.
         """
-        raise NotImplementedError
+        out = bytearray(len(stream))
+        for index, base in enumerate(range(0, len(stream), window_len)):
+            filled = min(len(stream) - base, window_len)
+            for k, src in enumerate(self._window_perm(filled, index)):
+                out[base + k] = stream[base + src]
+        return bytes(out)
+
+    def _window_perm(self, filled: int, window_index: int) -> list[int]:
+        """Fisher-Yates shuffle of ``range(filled)`` keyed by seed and window.
+
+        The keystream is ChaCha20 (IETF, counter 0) under the seed, with the
+        window index as a little-endian u64 in the first 8 nonce bytes. Each
+        draw is a little-endian u32, rejection-sampled to avoid modulo bias.
+
+        Complexity: O(filled).
+        """
+        perm = list(range(filled))
+        if filled <= 1:
+            return perm
+        nonce = window_index.to_bytes(8, "little") + bytes(NONCE_LEN - 8)
+        keystream = Cipher(
+            algorithms.ChaCha20(self._seed, bytes(4) + nonce), mode=None
+        ).encryptor()
+        draws = struct.iter_unpack("<I", keystream.update(bytes(4 * filled)))
+        for i in range(filled - 1, 0, -1):
+            bound = i + 1
+            limit = (1 << 32) // bound * bound
+            while True:
+                (x,) = next(draws, None) or struct.unpack(
+                    "<I", keystream.update(bytes(4))
+                )
+                if x < limit:
+                    break
+            j = x % bound
+            perm[i], perm[j] = perm[j], perm[i]
+        return perm
 
     def deinterleave(self, stream: bytes, window_len: int) -> bytes:
         """Undo :meth:`interleave`.
@@ -112,4 +151,9 @@ class CsprngLayer:
         Returns:
             The block-interleaved stream.
         """
-        raise NotImplementedError
+        out = bytearray(len(stream))
+        for index, base in enumerate(range(0, len(stream), window_len)):
+            filled = min(len(stream) - base, window_len)
+            for k, dst in enumerate(self._window_perm(filled, index)):
+                out[base + dst] = stream[base + k]
+        return bytes(out)
