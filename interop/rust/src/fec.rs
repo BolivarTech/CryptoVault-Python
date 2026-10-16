@@ -16,7 +16,7 @@ use cryptovault::fec::{
     ViterbiCodec, ViterbiOnlyFec,
 };
 use cryptovault::kdf::Argon2Kdf;
-use cryptovault::CryptoVault;
+use cryptovault::{CryptoVault, NoFec};
 use cryptovault::{
     HEADER_LEN, KEY_LEN, MAX_BLOB_LEN, MAX_PLAINTEXT_LEN, RS_BLOCK, RS_DATA, RS_INTERLEAVE_MAX,
     RS_PARITY, SALT_LEN, TERMINATION_OVERHEAD, VITERBI_CHUNK,
@@ -642,6 +642,7 @@ pub fn vault_for(spec: &Value) -> CryptoVault {
 /// bug in this tool.
 fn fec_for(spec: &Value) -> Box<dyn ErrorCorrection> {
     match spec["name"].as_str() {
+        Some("NoFec") => Box::new(NoFec),
         Some("ConcatenatedFec") => Box::new(ConcatenatedFec::default()),
         Some("ViterbiOnlyFec") => Box::new(ViterbiOnlyFec),
         Some("ReedSolomonCodec") => Box::new(ReedSolomonCodec),
