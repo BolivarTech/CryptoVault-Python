@@ -3,7 +3,8 @@
 # Date: 2026-10-16
 """Interleaving stage of the concatenated FEC, the crate's ``interleaver``."""
 
-from cryptovault.constants import RS_BLOCK
+from cryptovault.constants import RS_BLOCK, RS_INTERLEAVE_MAX
+from cryptovault.error import InvalidInputError
 
 
 class BlockInterleaver:
@@ -14,13 +15,21 @@ class BlockInterleaver:
     """
 
     def __init__(self, depth: int) -> None:
-        """Store the depth."""
+        """Validate and store the depth.
+
+        Raises:
+            InvalidInputError: If ``depth`` is outside ``1..=RS_INTERLEAVE_MAX``.
+        """
+        if not 1 <= depth <= RS_INTERLEAVE_MAX:
+            raise InvalidInputError(
+                f"interleave depth {depth} out of range 1..={RS_INTERLEAVE_MAX}"
+            )
         self._depth = depth
 
     @property
     def depth(self) -> int:
         """Interleave depth: codewords per window."""
-        raise NotImplementedError
+        return self._depth
 
     def interleave(self, rs_stream: bytes) -> bytes:
         """Reorder ``rs_stream`` to spread bursts across codewords.
