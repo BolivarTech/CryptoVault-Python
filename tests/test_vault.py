@@ -160,3 +160,13 @@ def test_encrypt_rejects_invalid_input_before_encrypting(
         make_vault().encrypt_with_key(key, plaintext)
     assert type(caught.value) is type(error)
     assert caught.value.message == error.message
+
+
+def test_derive_key_matches_the_crate_including_its_errors() -> None:
+    cases = load_rust_fixtures()["derive"]
+    assert len(cases) == 7
+    vault = make_vault()
+    for case in cases:
+        salt = bytes.fromhex(case["salt"])
+        got = outcome_of(functools.partial(vault.derive_key, case["password"], salt))
+        assert got == case["expect"], case

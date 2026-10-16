@@ -67,6 +67,10 @@ class CryptoVault:
         capped._max_blob_len = min(cap, MAX_BLOB_LEN)
         return capped
 
+    def derive_key(self, password: str, salt: bytes) -> bytes:
+        """Derive a master key from a password."""
+        raise NotImplementedError
+
     def encrypt_with_key(self, key: bytes, plaintext: str) -> str:
         """Encrypt text into a data blob."""
         if len(key) != KEY_LEN:
