@@ -28,3 +28,6 @@ claude-usage.txt
 
 # Rust interop tool build output
 interop/rust/target/
+
+# Build output
+dist/
