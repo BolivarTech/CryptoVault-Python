@@ -126,23 +126,7 @@ class CryptoVault:
 
     def decrypt_with_key(self, key: bytes, blob: str) -> str:
         """Decrypt a data blob."""
-        if len(key) != KEY_LEN:
-            raise InvalidInputError(f"master key must be exactly {KEY_LEN} bytes")
-        # Rust measures the str in UTF-8 bytes; for ASCII that is len(blob).
-        if blob.isascii():
-            blob_len = len(blob)
-        else:
-            blob_len = len(blob.encode("utf-8", "surrogatepass"))
-        if blob_len > MAX_B64_LEN:
-            raise InvalidInputError("input exceeds maximum size")
-        received = _decode_base64(blob)
-        if len(received) > self._max_blob_len:
-            raise InvalidInputError("input exceeds maximum size")
-        version, plaintext_len, body = decode_blob(self._fec, received)
-        header = bytes([version]) + struct.pack("<I", plaintext_len)
-        aad = bytes([_AAD_PURPOSE_DATA]) + header
-        nonce, sealed = body[:NONCE_LEN], body[NONCE_LEN:]
-        plaintext = self._cipher.decrypt(expand_aead_key(key), nonce, aad, sealed)
+        plaintext = self._decrypt_bytes(key, blob, _AAD_PURPOSE_DATA, b"")
         try:
             return plaintext.decode("utf-8")
         except UnicodeDecodeError as exc:
