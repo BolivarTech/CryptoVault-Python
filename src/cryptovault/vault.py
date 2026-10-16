@@ -88,6 +88,17 @@ class CryptoVault:
         blob = self._fec.encode(header + nonce + sealed)
         return base64.b64encode(blob).decode("ascii")
 
+    def rewrap(
+        self,
+        old_kek: bytes,
+        old_salt: bytes,
+        new_kek: bytes,
+        new_salt: bytes,
+        blob: str,
+    ) -> str:
+        """Move wrapped key material to a new context."""
+        raise NotImplementedError
+
     def unwrap_key(self, kek: bytes, salt: bytes, wrapped: str) -> bytes:
         """Unwrap key material."""
         return self._decrypt_bytes(kek, wrapped, _AAD_PURPOSE_ENVELOPE, salt)

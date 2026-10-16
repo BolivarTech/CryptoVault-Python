@@ -233,3 +233,16 @@ def test_wrap_key_round_trips_only_under_the_same_salt(
         vault.unwrap_key(kek, salt + b"\x00", wrapped)
     with pytest.raises(CipherError):
         vault.decrypt_with_key(kek, wrapped)
+
+
+def test_rewrap_moves_a_crate_wrapped_key_to_a_new_context() -> None:
+    case = load_rust_fixtures()["envelope"][0]
+    old_kek, old_salt = bytes.fromhex(case["kek"]), bytes.fromhex(case["salt"])
+    new_kek, new_salt = bytes(range(0xA0, 0xC0)), bytes(range(0x30, 0x40))
+    vault = make_vault()
+    moved = vault.rewrap(old_kek, old_salt, new_kek, new_salt, case["blob"])
+    assert vault.unwrap_key(new_kek, new_salt, moved).hex() == case["key_material"]
+    with pytest.raises(CipherError):
+        vault.unwrap_key(old_kek, old_salt, moved)
+    with pytest.raises(CipherError):
+        vault.rewrap(old_kek, new_salt, new_kek, new_salt, case["blob"])
