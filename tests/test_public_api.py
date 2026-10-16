@@ -9,6 +9,7 @@ PUBLIC_NAMES = {
     "Aes256GcmSivCipher",
     "Argon2Kdf",
     "AuthenticatedCipher",
+    "ConcatenatedFec",
     "CipherError",
     "CryptoVault",
     "CryptoVaultError",
