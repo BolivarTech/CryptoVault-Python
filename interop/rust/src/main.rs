@@ -267,6 +267,29 @@ fn max_blob_len(vault: &CryptoVault) -> Vec<Value> {
         .collect()
 }
 
+/// Keys the crate wraps, with empty, 16- and 40-byte salts and empty material;
+/// read by `test_every_crate_wrapped_key_unwraps_with_its_kek_and_salt`.
+fn envelope(vault: &CryptoVault) -> Vec<Value> {
+    let kek = counting(0x60, KEY_LEN);
+    let inputs = [
+        (counting(0x10, SALT_LEN), counting(0x40, KEY_LEN)),
+        (Vec::new(), counting(0x40, KEY_LEN)),
+        (counting(0x10, SALT_LEN), Vec::new()),
+        (vec![0xaa; 40], vec![0x55; 64]),
+    ];
+    inputs
+        .iter()
+        .map(|(salt, material)| {
+            json!({
+                "kek": hex::encode(&kek),
+                "salt": hex::encode(salt),
+                "key_material": hex::encode(material),
+                "blob": vault.wrap_key(&kek, salt, material).expect("wrap"),
+            })
+        })
+        .collect()
+}
+
 /// Prints the full fixture document.
 fn fixtures() -> ExitCode {
     let vault = vault();
@@ -286,6 +309,7 @@ fn fixtures() -> ExitCode {
         "data": data(&vault),
         "adversarial": adversarial(&vault),
         "max_blob_len": max_blob_len(&vault),
+        "envelope": envelope(&vault),
     });
     println!("{}", serde_json::to_string_pretty(&document).expect("serializable"));
     ExitCode::SUCCESS

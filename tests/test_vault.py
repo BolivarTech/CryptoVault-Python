@@ -176,3 +176,12 @@ def test_derive_key_rejects_a_password_that_is_not_encodable_as_utf8() -> None:
     with pytest.raises(EncodingError) as caught:
         make_vault().derive_key("pass\ud800word", bytes(16))
     assert caught.value.message == "password is not valid UTF-8"
+
+
+def test_every_crate_wrapped_key_unwraps_with_its_kek_and_salt() -> None:
+    cases = load_rust_fixtures()["envelope"]
+    assert len(cases) == 4
+    vault = make_vault()
+    for case in cases:
+        kek, salt = bytes.fromhex(case["kek"]), bytes.fromhex(case["salt"])
+        assert vault.unwrap_key(kek, salt, case["blob"]).hex() == case["key_material"]

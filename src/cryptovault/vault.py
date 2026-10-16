@@ -68,6 +68,10 @@ class CryptoVault:
         capped._max_blob_len = min(cap, MAX_BLOB_LEN)
         return capped
 
+    def unwrap_key(self, kek: bytes, salt: bytes, wrapped: str) -> bytes:
+        """Unwrap key material."""
+        raise NotImplementedError
+
     def derive_key(self, password: str, salt: bytes) -> bytes:
         """Derive a master key from a password."""
         if not password:
