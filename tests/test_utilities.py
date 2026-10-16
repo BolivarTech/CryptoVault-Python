@@ -9,7 +9,7 @@ from collections.abc import Callable
 import pytest
 
 from cryptovault.error import KeyDerivationError
-from cryptovault.vault import generate_dek, generate_salt
+from cryptovault.vault import constant_time_eq, generate_dek, generate_salt
 
 
 @pytest.mark.parametrize(
@@ -30,3 +30,19 @@ def test_generators_return_fresh_random_bytes_or_fail_closed(
         generate()
     assert caught.value.message.startswith("OsRng entropy failure: ")
     assert isinstance(caught.value.__cause__, OSError)
+
+
+@pytest.mark.parametrize(
+    ("a", "b", "equal"),
+    [
+        (b"", b"", True),
+        (b"secret", b"secret", True),
+        (b"secret", b"secreT", False),
+        (b"secret", b"secret!", False),
+        (b"", b"\x00", False),
+    ],
+)
+def test_constant_time_eq_compares_whole_byte_strings(
+    a: bytes, b: bytes, equal: bool
+) -> None:
+    assert constant_time_eq(a, b) is equal
