@@ -206,6 +206,11 @@ uv build
    the crate in both directions.
 2. **The FEC strategies.** Reed-Solomon, the interleaver and Viterbi, so any `cryptovault`
    blob can be read from Python. Implemented and cross-checked in both directions.
+3. **A compiled FEC accelerator.** The codecs are pure Python, and a damaged sub-block runs
+   the full Viterbi trellis at about 12 µs per stage: a 128 KiB blob with one flipped bit takes
+   about 15 s to decrypt. The plan is an optional Rust extension (PyO3) that wraps the same
+   `reedsolomon` and `viterbi` crates the reference crate uses, with the pure-Python codecs
+   kept as the fallback where no wheel exists. The crate fixtures stay as its parity check.
 
 ## License
 
