@@ -61,3 +61,7 @@ def test_every_single_bit_flip_fails_exactly_as_in_the_crate() -> None:
 
 def test_only_canonical_padded_base64_is_accepted_as_in_the_crate() -> None:
     assert adversarial_mismatches("encoding", 14) == []
+
+
+def test_master_key_must_be_exactly_32_bytes_as_in_the_crate() -> None:
+    assert adversarial_mismatches("key", 4) == []
