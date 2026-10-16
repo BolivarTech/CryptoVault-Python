@@ -26,6 +26,16 @@ _AAD_PURPOSE_DATA = 0x01
 _AAD_PURPOSE_ENVELOPE = 0x02
 
 
+def generate_salt() -> bytes:
+    """Generate a per-context salt."""
+    raise NotImplementedError
+
+
+def generate_dek() -> bytes:
+    """Generate a data-encryption key."""
+    raise NotImplementedError
+
+
 def _decode_base64(text: str) -> bytes:
     """Decode strict, canonical, padded standard base64, as the crate does.
 
