@@ -551,6 +551,22 @@ fn concatenated() -> Vec<Value> {
     cases
 }
 
+/// Interleaver seeds the crate's `expand_interleaver_seed` derives; read by
+/// `test_interleaver_seed_matches_the_crate_and_differs_from_the_aead_key`.
+fn interleaver_seed() -> Vec<Value> {
+    [
+        vec![0u8; KEY_LEN],
+        vec![0xff; KEY_LEN],
+        pattern(900, KEY_LEN),
+    ]
+    .iter()
+    .map(|master| {
+        let seed = cryptovault::kdf::expand_interleaver_seed(master).expect("expand");
+        json!({ "master": hex::encode(master), "seed": hex::encode(&*seed) })
+    })
+    .collect()
+}
+
 /// Prints the full FEC fixture document.
 pub fn fec_fixtures() -> ExitCode {
     let document = json!({
@@ -572,6 +588,7 @@ pub fn fec_fixtures() -> ExitCode {
         "viterbi_decode": viterbi_decode(),
         "viterbi_only": viterbi_only(),
         "concatenated": concatenated(),
+        "interleaver_seed": interleaver_seed(),
     });
     println!(
         "{}",

@@ -88,6 +88,18 @@ def expand_aead_key(master: bytes) -> bytes:
     return _hkdf_expand(master, _HKDF_INFO_AEAD)
 
 
+def expand_interleaver_seed(master: bytes) -> bytes:
+    """Expand the CSPRNG interleaver seed from a master key.
+
+    Args:
+        master: The 32-byte master key.
+
+    Returns:
+        The 32-byte interleaver seed.
+    """
+    raise NotImplementedError
+
+
 def _hkdf_expand(master: bytes, info: bytes) -> bytes:
     """Run HKDF-SHA256 (RFC 5869) with no salt and a 32-byte output.
 
