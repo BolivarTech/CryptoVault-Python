@@ -1,3 +1,7 @@
+# Author: Julian Bolivar
+# Version: 0.1.0
+# Date: 2026-10-16
+
 """Tests for the header sweep.
 
 Maintained copy
@@ -15,7 +19,8 @@ silently in production if wrong: a sweep that enumerates the wrong set reports
 a confident green over files it never opened, and a write that is not
 idempotent stacks a second header nobody notices until the diff is read.
 
-Every fixture lives in a temporary git repository built by ``HeaderSweepTestCase.setUp``; the
+Every fixture lives in a temporary git repository built by
+``HeaderSweepTestCase.setUp``; the
 real tree is never touched, and no test depends on the checkout it runs from.
 """
 
@@ -52,7 +57,7 @@ def _git(root: pathlib.Path, *args: str) -> None:
     Raises:
         subprocess.CalledProcessError: If git exits non-zero.
     """
-    subprocess.run(("git",) + args, cwd=str(root), check=True, capture_output=True)
+    subprocess.run(("git", *args), cwd=str(root), check=True, capture_output=True)
 
 
 def _write(
