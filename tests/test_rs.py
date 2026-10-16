@@ -29,3 +29,17 @@ def test_rs_decode_corrects_and_fails_exactly_as_the_crate() -> None:
         else:
             got = {"ok": decoded.hex()}
         assert got == case["expect"], case["label"]
+
+
+def test_rs_validate_pre_fec_bounds_lengths_as_the_crate() -> None:
+    cases = load_rust_fec_fixtures()["rs_validate"]
+    assert len(cases) == 8
+    codec = ReedSolomonCodec()
+    for case in cases:
+        try:
+            got: dict[str, object] = {
+                "ok": codec.validate_pre_fec(bytes(case["received_len"]))
+            }
+        except CryptoVaultError as error:
+            got = {"error": str(error)}
+        assert got == case["expect"], case["received_len"]

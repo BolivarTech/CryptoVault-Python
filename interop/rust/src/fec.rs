@@ -10,7 +10,8 @@ use std::process::ExitCode;
 
 use cryptovault::fec::{ErrorCorrection, ReedSolomonCodec};
 use cryptovault::{
-    RS_BLOCK, RS_DATA, RS_INTERLEAVE_MAX, RS_PARITY, TERMINATION_OVERHEAD, VITERBI_CHUNK,
+    MAX_BLOB_LEN, RS_BLOCK, RS_DATA, RS_INTERLEAVE_MAX, RS_PARITY, TERMINATION_OVERHEAD,
+    VITERBI_CHUNK,
 };
 use serde_json::{json, Value};
 
@@ -116,6 +117,22 @@ fn rs_decode() -> Vec<Value> {
     cases
 }
 
+/// `ReedSolomonCodec::validate_pre_fec` over zeroed blobs of edge lengths;
+/// read by `test_rs_validate_pre_fec_bounds_lengths_as_the_crate`.
+fn rs_validate() -> Vec<Value> {
+    let largest = MAX_BLOB_LEN - MAX_BLOB_LEN % RS_BLOCK;
+    [0, 1, 254, 255, 256, 510, largest, MAX_BLOB_LEN + 1]
+        .iter()
+        .map(|&len| {
+            let expect = match ReedSolomonCodec.validate_pre_fec(&vec![0u8; len]) {
+                Ok(pre_len) => json!({ "ok": pre_len }),
+                Err(error) => json!({ "error": error.to_string() }),
+            };
+            json!({ "received_len": len, "expect": expect })
+        })
+        .collect()
+}
+
 /// Prints the full FEC fixture document.
 pub fn fec_fixtures() -> ExitCode {
     let document = json!({
@@ -127,6 +144,7 @@ pub fn fec_fixtures() -> ExitCode {
         },
         "rs_encode": rs_encode(),
         "rs_decode": rs_decode(),
+        "rs_validate": rs_validate(),
     });
     println!(
         "{}",

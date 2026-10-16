@@ -50,3 +50,14 @@ class ReedSolomonCodec:
             raise ErrorCorrectionError("forward error correction failed") from exc
         except RsInvalidInputError as exc:
             raise InvalidInputError("malformed blob") from exc
+
+    def validate_pre_fec(self, received: bytes) -> int:
+        """Check the framing of an RS-only blob before decoding it.
+
+        Args:
+            received: The base64-decoded blob.
+
+        Returns:
+            The data length to recover.
+        """
+        raise NotImplementedError
