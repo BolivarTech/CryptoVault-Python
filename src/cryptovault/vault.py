@@ -63,4 +63,18 @@ class CryptoVault:
         aad = bytes([_AAD_PURPOSE_DATA]) + header
         nonce, sealed = body[:NONCE_LEN], body[NONCE_LEN:]
         plaintext = self._cipher.decrypt(expand_aead_key(key), nonce, aad, sealed)
-        return plaintext.decode("utf-8")
+        try:
+            return plaintext.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            # Rust's Utf8Error stops at the same byte and measures the bad
+            # sequence the same way; only the wording differs.
+            if exc.reason == "unexpected end of data":
+                detail = f"incomplete utf-8 byte sequence from index {exc.start}"
+            else:
+                size = exc.end - exc.start
+                detail = (
+                    f"invalid utf-8 sequence of {size} bytes from index {exc.start}"
+                )
+            raise EncodingError(
+                f"decrypted plaintext is not valid UTF-8: {detail}"
+            ) from exc
