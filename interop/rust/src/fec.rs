@@ -8,7 +8,9 @@
 
 use std::process::ExitCode;
 
-use cryptovault::fec::{BlockInterleaver, CsprngLayer, ErrorCorrection, ReedSolomonCodec};
+use cryptovault::fec::{
+    BlockInterleaver, CsprngLayer, ErrorCorrection, Interleaver, ReedSolomonCodec,
+};
 use cryptovault::{
     KEY_LEN, MAX_BLOB_LEN, RS_BLOCK, RS_DATA, RS_INTERLEAVE_MAX, RS_PARITY, TERMINATION_OVERHEAD,
     VITERBI_CHUNK,
@@ -227,6 +229,39 @@ fn csprng_seed() -> Vec<Value> {
         .collect()
 }
 
+/// `Interleaver` outputs, block-only and block-then-CSPRNG; read by
+/// `test_interleaver_composes_block_then_csprng_as_the_crate`.
+fn interleaver() -> Vec<Value> {
+    let seed = pattern(73, KEY_LEN);
+    let inputs: [(usize, Option<&[u8]>, usize); 6] = [
+        (5, None, 5 * RS_BLOCK + 42),
+        (5, Some(&seed), 5 * RS_BLOCK + 42),
+        (5, Some(&seed), 0),
+        (3, Some(&seed), 7 * RS_BLOCK),
+        (1, Some(&seed), 2 * RS_BLOCK + 1),
+        (RS_INTERLEAVE_MAX, Some(&seed), 40 * RS_BLOCK),
+    ];
+    inputs
+        .iter()
+        .map(|&(depth, seed, len)| {
+            let block = BlockInterleaver::new(depth).expect("valid depth");
+            let interleaver = match seed {
+                None => Interleaver::Block(block),
+                Some(seed) => {
+                    Interleaver::BlockThenCsprng(block, CsprngLayer::new(seed).expect("seed"))
+                }
+            };
+            let stream = pattern((depth + len) as u32, len);
+            json!({
+                "depth": depth,
+                "seed": seed.map(hex::encode),
+                "stream": hex::encode(&stream),
+                "interleaved": hex::encode(interleaver.interleave(&stream)),
+            })
+        })
+        .collect()
+}
+
 /// Prints the full FEC fixture document.
 pub fn fec_fixtures() -> ExitCode {
     let document = json!({
@@ -243,6 +278,7 @@ pub fn fec_fixtures() -> ExitCode {
         "interleaver_depth": interleaver_depth(),
         "csprng_interleave": csprng_interleave(),
         "csprng_seed": csprng_seed(),
+        "interleaver": interleaver(),
     });
     println!(
         "{}",

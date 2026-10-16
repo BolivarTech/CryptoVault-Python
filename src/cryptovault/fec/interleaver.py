@@ -170,3 +170,39 @@ class CsprngLayer:
             for k, dst in enumerate(self._window_perm(filled, index)):
                 out[base + dst] = stream[base + k]
         return bytes(out)
+
+
+class Interleaver:
+    """Interleaving strategy of the concatenated FEC.
+
+    Args:
+        block: The block interleaver.
+        csprng: The optional CSPRNG layer.
+    """
+
+    def __init__(self, block: BlockInterleaver, csprng: CsprngLayer | None) -> None:
+        """Store the stages."""
+        self._block = block
+        self._csprng = csprng
+
+    def interleave(self, stream: bytes) -> bytes:
+        """Interleave ``stream``.
+
+        Args:
+            stream: The Reed-Solomon stream.
+
+        Returns:
+            The interleaved stream.
+        """
+        raise NotImplementedError
+
+    def deinterleave(self, stream: bytes) -> bytes:
+        """Undo :meth:`interleave`.
+
+        Args:
+            stream: An interleaved stream.
+
+        Returns:
+            The Reed-Solomon stream.
+        """
+        raise NotImplementedError
