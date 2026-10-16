@@ -13,10 +13,44 @@ use cryptovault::{
     ARGON2_M_KIB, ARGON2_P, ARGON2_T, BLOB_VERSION, HEADER_LEN, KEY_LEN, MAX_B64_LEN,
     MAX_BLOB_LEN, MAX_PLAINTEXT_LEN, NONCE_LEN, RECOMMENDED_MAX_PAYLOAD, SALT_LEN, TAG_LEN,
 };
+use base64::engine::general_purpose::STANDARD;
+use base64::Engine;
 use cryptovault::cipher::Aes256GcmSivCipher;
 use cryptovault::kdf::Argon2Kdf;
 use cryptovault::{CryptoVault, NoFec, Result};
 use serde_json::{json, Value};
+
+/// Adversarial inputs paired with the crate's answers, one group per Python
+/// test in `tests/test_vault.py` (fixture key `adversarial`).
+fn adversarial(vault: &CryptoVault) -> Vec<Value> {
+    let key = counting(0x00, KEY_LEN);
+    let base = vault.encrypt_with_key(&key, "hi").expect("encrypt");
+    let decoded = STANDARD.decode(&base).expect("own blob decodes");
+    let mut cases = Vec::new();
+    for i in 0..decoded.len() {
+        for bit in 0..8 {
+            let mut bytes = decoded.clone();
+            bytes[i] ^= 1 << bit;
+            let label = format!("flip byte {i} bit {bit}");
+            let blob = STANDARD.encode(bytes);
+            cases.push(decrypt_case(vault, "bit flip", &label, &key, &blob));
+        }
+    }
+    cases
+}
+
+/// Records the crate's answer to `decrypt_with_key(key, blob)` for one case of
+/// an adversarial `group`.
+fn decrypt_case(vault: &CryptoVault, group: &str, label: &str, key: &[u8], blob: &str) -> Value {
+    json!({
+        "group": group,
+        "label": label,
+        "op": "decrypt",
+        "key": hex::encode(key),
+        "blob": blob,
+        "expect": outcome(vault.decrypt_with_key(key, blob), |s| json!(s.as_str())),
+    })
+}
 
 /// Builds the AEAD-only vault every fixture is produced with.
 fn vault() -> CryptoVault {
@@ -112,6 +146,7 @@ fn fixtures() -> ExitCode {
         "derive": derive(&vault),
         "hkdf": hkdf(),
         "data": data(&vault),
+        "adversarial": adversarial(&vault),
     });
     println!("{}", serde_json::to_string_pretty(&document).expect("serializable"));
     ExitCode::SUCCESS
