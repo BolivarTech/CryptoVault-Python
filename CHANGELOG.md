@@ -4,7 +4,7 @@ All notable changes to this package are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
-## [0.2.0] - Unreleased
+## [0.2.0] - 2026-10-16
 
 The FEC layer of `cryptovault` 0.3.0, with every strategy of the crate, byte-compatible in
 both directions.
@@ -29,7 +29,7 @@ both directions.
 
 - `fec` is now a package; `from cryptovault.fec import NoFec` still works.
 
-## [0.1.0] - Unreleased
+## [0.1.0] - 2026-10-16
 
 First release: the `NoFec` mode of `cryptovault` 0.3.0, byte-compatible in both directions.
 

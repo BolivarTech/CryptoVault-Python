@@ -5,9 +5,8 @@ blob format, byte-compatible with the Rust crate.** AES-256-GCM-SIV under an HKD
 Argon2id key derivation and DEK/KEK key wrapping, followed by the crate's forward-error
 correction: Reed-Solomon, an interleaver and a Viterbi code, or no FEC at all.
 
-> **Status: 0.2.0, in development.** Every FEC strategy of `cryptovault` 0.3.0 is implemented
-> and checked in both directions against the crate. There is no tagged release yet, and the
-> package is not on PyPI.
+> **Status: 0.2.0, alpha.** Every FEC strategy of `cryptovault` 0.3.0 is implemented and
+> checked in both directions against the crate.
 
 ---
 
@@ -21,6 +20,15 @@ a blob and back, and the caller moves the blob.
 The Rust crate stacks two independent layers: an AEAD that provides all of the security,
 then an FEC that adds channel resilience and no security. Both are implemented here, with
 the same four FEC strategies as the crate.
+
+## Installation
+
+```sh
+pip install cryptovault
+```
+
+[Requirements](#requirements) lists the supported Python versions and the `cryptography` and
+OpenSSL floor.
 
 ## Quick start
 
@@ -206,6 +214,11 @@ uv build
    the crate in both directions.
 2. **The FEC strategies.** Reed-Solomon, the interleaver and Viterbi, so any `cryptovault`
    blob can be read from Python. Implemented and cross-checked in both directions.
+3. **A compiled FEC accelerator.** The codecs are pure Python, and a damaged sub-block runs
+   the full Viterbi trellis at about 12 µs per stage: a 128 KiB blob with one flipped bit takes
+   about 15 s to decrypt. The plan is an optional Rust extension (PyO3) that wraps the same
+   `reedsolomon` and `viterbi` crates the reference crate uses, with the pure-Python codecs
+   kept as the fallback where no wheel exists. The crate fixtures stay as its parity check.
 
 ## License
 
