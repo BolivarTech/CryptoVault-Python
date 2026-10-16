@@ -1,0 +1,65 @@
+[project]
+name = "cryptovault"
+version = "0.1.0"
+description = "Authenticated encryption byte-compatible with the cryptovault Rust crate: AES-256-GCM-SIV over Argon2id/HKDF."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT OR Apache-2.0"
+license-files = ["LICENSE-MIT", "LICENSE-APACHE"]
+authors = [{ name = "Julian Bolivar", email = "jbolivarg@gmail.com" }]
+keywords = ["cryptography", "aead", "encryption", "aes-gcm-siv", "argon2"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Security :: Cryptography",
+    "Typing :: Typed",
+]
+dependencies = ["cryptography>=44"]
+
+[project.urls]
+Repository = "https://github.com/BolivarTech/CryptoVault-Python"
+
+[dependency-groups]
+dev = [
+    "hypothesis>=6.100",
+    "mypy>=1.10",
+    "pip-audit>=2.7",
+    "pytest>=8.0",
+    "ruff>=0.6",
+]
+
+[build-system]
+requires = ["uv_build>=0.13.0,<0.14"]
+build-backend = "uv_build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "scripts"]
+addopts = ["--strict-markers", "--strict-config"]
+xfail_strict = true
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+extend-exclude = ["interop/rust"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "N", "D", "S", "SIM", "RUF", "PL"]
+ignore = ["PLR2004"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "D", "PLR0913"]
+"scripts/test_*.py" = ["S101", "S603", "S607", "D", "PLR0913"]
+"scripts/check_headers.py" = ["S603", "S607"]
+"interop/*.py" = ["S603", "S607"]
+
+[tool.mypy]
+strict = true
+python_version = "3.11"
+exclude = ["^interop/rust/", "^\\.venv/"]

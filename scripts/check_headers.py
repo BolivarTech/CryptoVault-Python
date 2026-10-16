@@ -164,7 +164,7 @@ def run_git(repo_root: pathlib.Path, *args: str) -> str:
     """
     try:
         completed = subprocess.run(
-            ("git",) + args,
+            ("git", *args),
             cwd=str(repo_root),
             check=True,
             capture_output=True,
@@ -297,7 +297,7 @@ def write_text(path: pathlib.Path, text: str) -> None:
 
 
 def dominant_newline(lines: list[str]) -> str:
-    """Pick the line ending a newly inserted line should use.
+    r"""Pick the line ending a newly inserted line should use.
 
     The first terminated line wins, which keeps an inserted header consistent
     with the block it is being inserted above rather than with the platform
@@ -307,7 +307,7 @@ def dominant_newline(lines: list[str]) -> str:
         lines: The file's lines with their endings kept.
 
     Returns:
-        str: ``"\\r\\n"`` or ``"\\n"``; ``"\\n"`` for a file with no line end.
+        str: ``"\r\n"`` or ``"\n"``; ``"\n"`` for a file with no line end.
     """
     for line in lines:
         if line.endswith("\r\n"):
@@ -462,14 +462,14 @@ def stamp_file(path: pathlib.Path, version: str, date: str) -> bool:
 
 
 def _line_ending(line: str, fallback: str) -> str:
-    """Return the line ending of one line, so a rewrite preserves it.
+    r"""Return the line ending of one line, so a rewrite preserves it.
 
     Args:
         line: The line whose ending is wanted, endings kept.
         fallback: Ending to use when the line has none (final line, no EOL).
 
     Returns:
-        str: ``"\\r\\n"``, ``"\\n"``, or the fallback.
+        str: ``"\r\n"``, ``"\n"``, or the fallback.
     """
     if line.endswith("\r\n"):
         return "\r\n"
