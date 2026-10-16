@@ -15,7 +15,7 @@ import struct
 from typing import Final
 
 from cryptovault._blob import decode_blob
-from cryptovault.cipher import AuthenticatedCipher, sample_nonce
+from cryptovault.cipher import Aes256GcmSivCipher, AuthenticatedCipher, sample_nonce
 from cryptovault.constants import (
     BLOB_VERSION,
     KEY_LEN,
@@ -26,8 +26,8 @@ from cryptovault.constants import (
     SALT_LEN,
 )
 from cryptovault.error import EncodingError, InvalidInputError, KeyDerivationError
-from cryptovault.fec import ErrorCorrection
-from cryptovault.kdf import KeyDerivation, expand_aead_key
+from cryptovault.fec import ConcatenatedFec, ErrorCorrection
+from cryptovault.kdf import Argon2Kdf, KeyDerivation, expand_aead_key
 
 _AAD_PURPOSE_DATA: Final = 0x01
 """First AAD byte of data blobs; keeps them from opening as envelopes."""
@@ -213,12 +213,15 @@ class CryptoVault:
 
     @classmethod
     def default(cls) -> "CryptoVault":
-        """Build the crate's default vault.
+        """Build the crate's default vault, ``CryptoVault::default()``.
+
+        Argon2id, AES-256-GCM-SIV and the default concatenated FEC
+        (:meth:`ConcatenatedFec.default`).
 
         Returns:
             The default vault.
         """
-        raise NotImplementedError
+        return cls(Argon2Kdf(), Aes256GcmSivCipher(), ConcatenatedFec.default())
 
     def with_max_blob_len(self, cap: int) -> "CryptoVault":
         """Return a new vault that rejects decoded blobs longer than ``cap``.
