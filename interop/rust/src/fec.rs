@@ -8,6 +8,8 @@
 
 use std::process::ExitCode;
 
+use base64::engine::general_purpose::STANDARD;
+use base64::Engine;
 use cryptovault::cipher::Aes256GcmSivCipher;
 use cryptovault::fec::{
     BlockInterleaver, ConcatenatedFec, CsprngLayer, ErrorCorrection, Interleaver, ReedSolomonCodec,
@@ -16,8 +18,8 @@ use cryptovault::fec::{
 use cryptovault::kdf::Argon2Kdf;
 use cryptovault::CryptoVault;
 use cryptovault::{
-    KEY_LEN, MAX_BLOB_LEN, RS_BLOCK, RS_DATA, RS_INTERLEAVE_MAX, RS_PARITY, SALT_LEN,
-    TERMINATION_OVERHEAD, VITERBI_CHUNK,
+    HEADER_LEN, KEY_LEN, MAX_BLOB_LEN, MAX_PLAINTEXT_LEN, RS_BLOCK, RS_DATA, RS_INTERLEAVE_MAX,
+    RS_PARITY, SALT_LEN, TERMINATION_OVERHEAD, VITERBI_CHUNK,
 };
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -629,7 +631,17 @@ fn strategies() -> Vec<Value> {
 /// Builds the vault a strategy spec names; panics on an unknown spec, which is
 /// a bug in this tool.
 pub fn vault_for(spec: &Value) -> CryptoVault {
-    let fec: Box<dyn ErrorCorrection> = match spec["name"].as_str() {
+    CryptoVault::new(
+        Box::new(Argon2Kdf),
+        Box::new(Aes256GcmSivCipher),
+        fec_for(spec),
+    )
+}
+
+/// Builds the FEC strategy a spec names; panics on an unknown spec, which is a
+/// bug in this tool.
+fn fec_for(spec: &Value) -> Box<dyn ErrorCorrection> {
+    match spec["name"].as_str() {
         Some("ConcatenatedFec") => Box::new(ConcatenatedFec::default()),
         Some("ViterbiOnlyFec") => Box::new(ViterbiOnlyFec),
         Some("ReedSolomonCodec") => Box::new(ReedSolomonCodec),
@@ -639,8 +651,7 @@ pub fn vault_for(spec: &Value) -> CryptoVault {
             Box::new(ConcatenatedFec::with_csprng_from_master(&master, depth).expect("stack"))
         }
         other => panic!("unknown FEC strategy {other:?}"),
-    };
-    CryptoVault::new(Box::new(Argon2Kdf), Box::new(Aes256GcmSivCipher), fec)
+    }
 }
 
 /// Data and envelope blobs the crate produces under each FEC strategy; read by
@@ -681,6 +692,187 @@ fn vault_blobs() -> Vec<Value> {
     rows
 }
 
+/// Records the crate's answer to one adversarial decrypt or unwrap.
+fn adversarial_row(spec: &Value, label: &str, key: &[u8], blob: &str) -> Value {
+    let vault = vault_for(spec);
+    json!({
+        "fec": spec, "label": label, "op": "decrypt", "key": hex::encode(key), "blob": blob,
+        "expect": match vault.decrypt_with_key(key, blob) {
+            Ok(plaintext) => json!({ "ok": plaintext.as_str() }),
+            Err(error) => json!({ "error": error.to_string() }),
+        },
+    })
+}
+
+/// Recovers the protected payload `header ‖ nonce ‖ ct ‖ tag` of a clean blob,
+/// with whatever padding the strategy decodes.
+fn protected_of(spec: &Value, blob: &str) -> Vec<u8> {
+    let fec = fec_for(spec);
+    let received = STANDARD.decode(blob).expect("own blob decodes");
+    let pre_len = fec.validate_pre_fec(&received).expect("valid framing");
+    fec.decode(&received, pre_len).expect("clean decode")
+}
+
+/// Re-encodes a (possibly altered) protected payload into a blob.
+fn reencode(spec: &Value, protected: &[u8]) -> String {
+    STANDARD.encode(fec_for(spec).encode(protected))
+}
+
+/// Adversarial decrypts under the FEC strategies: sampled bit flips, bursts,
+/// truncation and padding, rewritten headers, wrong keys and purposes, invalid
+/// UTF-8 and blob caps; read by
+/// `test_adversarial_fec_blobs_behave_as_in_the_crate`.
+fn vault_adversarial() -> Vec<Value> {
+    let key = pattern(997, KEY_LEN);
+    let mut rows = Vec::new();
+    for (spec, flip_step) in strategies().into_iter().take(3).zip([31usize, 13, 41]) {
+        let vault = vault_for(&spec);
+        let base = vault.encrypt_with_key(&key, "hi").expect("encrypt");
+        let decoded = STANDARD.decode(&base).expect("decodes");
+        for bit in (0..decoded.len() * 8).step_by(flip_step) {
+            let mut bytes = decoded.clone();
+            bytes[bit / 8] ^= 0x80 >> (bit % 8);
+            let label = format!("flip bit {bit}");
+            rows.push(adversarial_row(
+                &spec,
+                &label,
+                &key,
+                &STANDARD.encode(bytes),
+            ));
+        }
+        for (len, offset) in [
+            (8usize, 0usize),
+            (16, 100),
+            (17, 0),
+            (24, 30),
+            (32, 60),
+            (64, 0),
+            (128, 200),
+        ] {
+            if offset + len > decoded.len() {
+                continue;
+            }
+            let mut bytes = decoded.clone();
+            for byte in bytes.iter_mut().skip(offset).take(len) {
+                *byte ^= 0xa5;
+            }
+            let label = format!("{len}-byte burst at {offset}");
+            rows.push(adversarial_row(
+                &spec,
+                &label,
+                &key,
+                &STANDARD.encode(bytes),
+            ));
+        }
+        let mut lengths = vec![0usize, 1, 2, 3, 4, 5, 202, 254, 255, 256];
+        lengths.extend([decoded.len() - 2, decoded.len() - 1]);
+        for len in lengths.into_iter().filter(|&len| len < decoded.len()) {
+            let label = format!("truncate to {len} bytes");
+            rows.push(adversarial_row(
+                &spec,
+                &label,
+                &key,
+                &STANDARD.encode(&decoded[..len]),
+            ));
+        }
+        for extra in [1usize, 2, 4] {
+            let mut bytes = decoded.clone();
+            bytes.extend(std::iter::repeat_n(0u8, extra));
+            let label = format!("append {extra} zero bytes");
+            rows.push(adversarial_row(
+                &spec,
+                &label,
+                &key,
+                &STANDARD.encode(bytes),
+            ));
+        }
+        let protected = protected_of(&spec, &base);
+        for version in [0x00u8, 0x02] {
+            let mut altered = protected.clone();
+            altered[0] = version;
+            let label = format!("version byte {version:#04x}");
+            rows.push(adversarial_row(
+                &spec,
+                &label,
+                &key,
+                &reencode(&spec, &altered),
+            ));
+        }
+        for declared in [
+            3u32,
+            MAX_PLAINTEXT_LEN as u32,
+            MAX_PLAINTEXT_LEN as u32 + 1,
+            u32::MAX,
+        ] {
+            let mut altered = protected.clone();
+            altered[1..HEADER_LEN].copy_from_slice(&declared.to_le_bytes());
+            let label = format!("declared length {declared}");
+            rows.push(adversarial_row(
+                &spec,
+                &label,
+                &key,
+                &reencode(&spec, &altered),
+            ));
+        }
+        rows.push(adversarial_row(
+            &spec,
+            "wrong key",
+            &pattern(998, KEY_LEN),
+            &base,
+        ));
+        rows.push(adversarial_row(&spec, "key of 31 bytes", &key[..31], &base));
+        for (label, bytes) in [
+            ("invalid lead byte", &[0xffu8][..]),
+            ("cut sequence", &[0xe2, 0x82]),
+        ] {
+            let raw = STANDARD
+                .decode(super::encrypt_raw_data(&key, bytes))
+                .expect("decodes");
+            rows.push(adversarial_row(&spec, label, &key, &reencode(&spec, &raw)));
+        }
+        let salt = pattern(999, SALT_LEN);
+        let wrapped = vault
+            .wrap_key(&key, &salt, &pattern(1000, KEY_LEN))
+            .expect("wrap");
+        rows.push(adversarial_row(
+            &spec,
+            "envelope opened as data",
+            &key,
+            &wrapped,
+        ));
+        for (label, unwrap_salt, blob) in [
+            ("envelope with its salt", salt.clone(), wrapped.clone()),
+            (
+                "envelope with another salt",
+                pattern(1001, SALT_LEN),
+                wrapped.clone(),
+            ),
+            ("data opened as envelope", Vec::new(), base.clone()),
+        ] {
+            rows.push(json!({
+                "fec": spec, "label": label, "op": "unwrap", "key": hex::encode(&key),
+                "salt": hex::encode(&unwrap_salt), "blob": blob,
+                "expect": match vault.unwrap_key(&key, &unwrap_salt, &blob) {
+                    Ok(material) => json!({ "ok": hex::encode(&*material) }),
+                    Err(error) => json!({ "error": error.to_string() }),
+                },
+            }));
+        }
+        for cap in [decoded.len() - 1, decoded.len(), 0] {
+            let capped = vault_for(&spec).with_max_blob_len(cap);
+            rows.push(json!({
+                "fec": spec, "label": format!("cap {cap}"), "op": "decrypt", "cap": cap,
+                "key": hex::encode(&key), "blob": base,
+                "expect": match capped.decrypt_with_key(&key, &base) {
+                    Ok(plaintext) => json!({ "ok": plaintext.as_str() }),
+                    Err(error) => json!({ "error": error.to_string() }),
+                },
+            }));
+        }
+    }
+    rows
+}
+
 /// Prints the full FEC fixture document.
 pub fn fec_fixtures() -> ExitCode {
     let document = json!({
@@ -706,6 +898,7 @@ pub fn fec_fixtures() -> ExitCode {
         "concatenated_default": concatenated_default(),
         "concatenated_from_master": concatenated_from_master(),
         "vault_blobs": vault_blobs(),
+        "vault_adversarial": vault_adversarial(),
     });
     println!(
         "{}",

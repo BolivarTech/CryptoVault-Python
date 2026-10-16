@@ -5,7 +5,7 @@
 
 from typing import Any
 
-from cryptovault import Aes256GcmSivCipher, Argon2Kdf, CryptoVault
+from cryptovault import Aes256GcmSivCipher, Argon2Kdf, CryptoVault, CryptoVaultError
 from cryptovault.fec import (
     ConcatenatedFec,
     ErrorCorrection,
@@ -58,3 +58,27 @@ def test_default_vault_opens_the_crate_default_blobs() -> None:
     for row in rows:
         got = vault.decrypt_with_key(bytes.fromhex(row["key"]), row["blob"])
         assert got == row["plaintext"]
+
+
+def test_adversarial_fec_blobs_behave_as_in_the_crate() -> None:
+    rows = load_rust_fec_fixtures()["vault_adversarial"]
+    assert len(rows) == 335
+    for row in rows:
+        vault = CryptoVault(
+            Argon2Kdf(), Aes256GcmSivCipher(), fec_from_spec(row["fec"])
+        )
+        if "cap" in row:
+            vault = vault.with_max_blob_len(row["cap"])
+        key = bytes.fromhex(row["key"])
+        try:
+            if row["op"] == "unwrap":
+                got: dict[str, object] = {
+                    "ok": vault.unwrap_key(
+                        key, bytes.fromhex(row["salt"]), row["blob"]
+                    ).hex()
+                }
+            else:
+                got = {"ok": vault.decrypt_with_key(key, row["blob"])}
+        except CryptoVaultError as error:
+            got = {"error": str(error)}
+        assert got == row["expect"], f"{row['fec']['name']}: {row['label']}"
