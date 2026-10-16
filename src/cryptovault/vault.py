@@ -23,6 +23,7 @@ from cryptovault.fec import NoFec
 from cryptovault.kdf import Argon2Kdf, expand_aead_key
 
 _AAD_PURPOSE_DATA = 0x01
+_AAD_PURPOSE_ENVELOPE = 0x02
 
 
 def _decode_base64(text: str) -> bytes:
@@ -70,7 +71,12 @@ class CryptoVault:
 
     def unwrap_key(self, kek: bytes, salt: bytes, wrapped: str) -> bytes:
         """Unwrap key material."""
-        raise NotImplementedError
+        received = _decode_base64(wrapped)
+        version, plaintext_len, body = decode_blob(self._fec, received)
+        header = bytes([version]) + struct.pack("<I", plaintext_len)
+        aad = bytes([_AAD_PURPOSE_ENVELOPE]) + header + salt
+        nonce, sealed = body[:NONCE_LEN], body[NONCE_LEN:]
+        return self._cipher.decrypt(expand_aead_key(kek), nonce, aad, sealed)
 
     def derive_key(self, password: str, salt: bytes) -> bytes:
         """Derive a master key from a password."""
