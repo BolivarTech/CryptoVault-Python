@@ -1,0 +1,27 @@
+# SBTDD local-only files
+CLAUDE.local.md
+CLAUDE.md
+.claude/
+sbtdd/
+planning/
+
+# MAGI gate (magi-rs config, encrypted database and logs)
+.magi/
+.magi.bak-*/
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.env
+
+# Graphify knowledge graph (regenerated from the code by the git hooks)
+graphify-out/
+
+# Local agent tooling (not part of the published repository)
+scripts/claude_usage.py
+scripts/sleep_signal.py
+claude-usage.txt
