@@ -11,11 +11,11 @@ Reed-Solomon, interleaver and Viterbi codecs come in a later stage.
 
 from typing import Protocol
 
-from cryptovault.constants import MAX_BLOB_LEN
+from cryptovault.constants import MAX_BLOB_LEN, RS_BLOCK, RS_DATA
 from cryptovault.error import InvalidInputError
 from cryptovault.fec.interleaver import BlockInterleaver, CsprngLayer, Interleaver
 from cryptovault.fec.rs import ReedSolomonCodec
-from cryptovault.fec.viterbi import ViterbiCodec, ViterbiOnlyFec
+from cryptovault.fec.viterbi import ViterbiCodec, ViterbiOnlyFec, _rs_len_from_body
 
 __all__ = [
     "BlockInterleaver",
@@ -156,7 +156,7 @@ class ConcatenatedFec:
         Returns:
             The coded blob body.
         """
-        raise NotImplementedError
+        return self._vt.encode(self._il.interleave(self._rs.encode(data)))
 
     def decode(self, encoded: bytes, pre_len: int) -> bytes:
         """Invert :meth:`encode`, correcting errors.
@@ -167,8 +167,16 @@ class ConcatenatedFec:
 
         Returns:
             The recovered payload.
+
+        Raises:
+            InvalidInputError: If the framing or a length is inconsistent.
+            ErrorCorrectionError: If the corruption exceeds the capacity.
         """
-        raise NotImplementedError
+        rs_len = _rs_stream_len(encoded)
+        rs_stream = self._vt.decode(encoded)
+        if len(rs_stream) != rs_len:
+            raise InvalidInputError("malformed blob")
+        return self._rs.decode(self._il.deinterleave(rs_stream), pre_len)
 
     def validate_pre_fec(self, received: bytes) -> int:
         """Check the framing before decoding.
@@ -178,5 +186,25 @@ class ConcatenatedFec:
 
         Returns:
             The Reed-Solomon data length the body decodes to.
+
+        Raises:
+            InvalidInputError: If ``received`` is longer than ``MAX_BLOB_LEN``
+                or does not frame a whole number of codewords.
         """
-        raise NotImplementedError
+        return _rs_stream_len(received) // RS_BLOCK * RS_DATA
+
+
+def _rs_stream_len(received: bytes) -> int:
+    """Derive the Reed-Solomon stream length a concatenated body decodes to.
+
+    Raises:
+        InvalidInputError: If ``received`` is longer than ``MAX_BLOB_LEN``, is
+            not a chunked Viterbi body, or does not frame a positive whole
+            number of codewords.
+    """
+    if len(received) > MAX_BLOB_LEN:
+        raise InvalidInputError("input exceeds maximum size")
+    rs_len = _rs_len_from_body(len(received))
+    if rs_len == 0 or rs_len % RS_BLOCK:
+        raise InvalidInputError("malformed blob")
+    return rs_len
