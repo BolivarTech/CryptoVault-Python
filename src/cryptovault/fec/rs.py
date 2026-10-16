@@ -3,8 +3,13 @@
 # Date: 2026-10-16
 """Reed-Solomon RS(255, 223) outer code, the crate's ``ReedSolomonCodec``."""
 
-from cryptovault.constants import RS_DATA, RS_PARITY
-from cryptovault.fec._reedsolomon import ReedSolomon
+from cryptovault.constants import RS_BLOCK, RS_DATA, RS_PARITY
+from cryptovault.error import ErrorCorrectionError, InvalidInputError
+from cryptovault.fec._reedsolomon import (
+    ReedSolomon,
+    RsInvalidInputError,
+    RsUncorrectableError,
+)
 
 _RS = ReedSolomon(RS_PARITY, RS_DATA)
 
@@ -32,5 +37,16 @@ class ReedSolomonCodec:
 
         Returns:
             The recovered data.
+
+        Raises:
+            InvalidInputError: If the lengths are inconsistent.
+            ErrorCorrectionError: If a codeword cannot be corrected.
         """
-        raise NotImplementedError
+        if len(encoded) % RS_BLOCK:
+            raise InvalidInputError("malformed blob")
+        try:
+            return _RS.decode(encoded, pre_len)
+        except RsUncorrectableError as exc:
+            raise ErrorCorrectionError("forward error correction failed") from exc
+        except RsInvalidInputError as exc:
+            raise InvalidInputError("malformed blob") from exc

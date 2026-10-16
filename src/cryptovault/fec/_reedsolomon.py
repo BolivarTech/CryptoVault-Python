@@ -57,6 +57,154 @@ def _pow(base: int, exp: int) -> int:
     return _EXP[(_LOG[base] * (exp % _ORDER)) % _ORDER]
 
 
+class RsError(Exception):
+    """Failure of the Reed-Solomon codec, the crate's ``RsError``."""
+
+
+class RsUncorrectableError(RsError):
+    """A codeword holds more errors than the code corrects."""
+
+
+class RsInvalidInputError(RsError):
+    """The encoded stream or the requested length is structurally invalid."""
+
+
+def _poly_eval(p: list[int] | bytes | bytearray, x: int) -> int:
+    """Evaluate a big-endian polynomial at ``x`` (Horner)."""
+    acc = 0
+    for c in p:
+        acc = _mul(acc, x) ^ c
+    return acc
+
+
+def _syndromes(block: bytes | bytearray, parity_len: int) -> list[int]:
+    """Syndromes ``S[s] = R(alpha^(FCR + s))`` for ``s < parity_len``."""
+    return [_poly_eval(block, _pow(_ALPHA, _FCR + s)) for s in range(parity_len)]
+
+
+def _berlekamp_massey(synd: list[int]) -> list[int]:
+    """Run the inversionless Berlekamp-Massey recurrence of the crate.
+
+    The locator may come out scaled by a non-zero constant, which changes
+    neither its roots nor Forney's ratio.
+
+    Args:
+        synd: The ``2t`` syndromes.
+
+    Returns:
+        The error locator, low-endian (index = degree), trimmed.
+    """
+    two_t = len(synd)
+    lam = [1] + [0] * two_t
+    b = [1] + [0] * two_t
+    length = 0
+    shift = 1
+    gamma = 1
+    for r in range(two_t):
+        delta = 0
+        for i in range(min(length, r) + 1):
+            delta ^= _mul(lam[i], synd[r - i])
+        if delta == 0:
+            shift += 1
+            continue
+        prev = lam
+        lam = [_mul(gamma, c) for c in lam]
+        for k in range(len(b) - shift):
+            lam[k + shift] ^= _mul(delta, b[k])
+        if 2 * length <= r:
+            length = r + 1 - length
+            b = prev
+            gamma = delta
+            shift = 1
+        else:
+            shift += 1
+    degree = len(lam) - 1
+    while degree > 0 and lam[degree] == 0:
+        degree -= 1
+    return lam[: degree + 1]
+
+
+def _chien_search(lam_be: list[int], n: int) -> list[int]:
+    """Return the positions ``j < n`` whose locator ``alpha^(n-1-j)`` is a root.
+
+    Complexity: O(n * degree).
+    """
+    return [
+        j
+        for j in range(n)
+        if _poly_eval(lam_be, _EXP[(_ORDER - (n - 1 - j) % _ORDER) % _ORDER]) == 0
+    ]
+
+
+def _forney(
+    synd: list[int], lam_le: list[int], positions: list[int], n: int
+) -> list[int]:
+    """Compute the magnitudes ``X^(1-FCR) * Omega(X^-1) / Lambda'(X^-1)``.
+
+    Omega is ``S(x) * Lambda(x) mod x^2t``; ``Lambda'`` keeps only the
+    odd-degree terms, since the field has characteristic 2.
+
+    Returns:
+        One magnitude per position.
+
+    Raises:
+        RsUncorrectableError: If a denominator or a magnitude is zero.
+    """
+    degree = len(lam_le) - 1
+    omega_le = [0] * len(synd)
+    for i in range(len(synd)):
+        for j in range(min(i, degree) + 1):
+            omega_le[i] ^= _mul(synd[i - j], lam_le[j])
+    omega_be = omega_le[::-1]
+    lp_be = [lam_le[d] if d % 2 else 0 for d in range(1, degree + 1)][::-1]
+    mags = []
+    for j in positions:
+        x = _pow(_ALPHA, (n - 1 - j) % _ORDER)
+        x_inv = _EXP[_ORDER - _LOG[x]]
+        num = _poly_eval(omega_be, x_inv)
+        den = _poly_eval(lp_be, x_inv)
+        if den == 0:
+            raise RsUncorrectableError("zero/degenerate Forney magnitude")
+        quotient = 0 if num == 0 else _EXP[(_LOG[num] + _ORDER - _LOG[den]) % _ORDER]
+        mag = _mul(_mul(x, _pow(x_inv, _FCR)), quotient)
+        if mag == 0:
+            raise RsUncorrectableError("zero/degenerate Forney magnitude")
+        mags.append(mag)
+    return mags
+
+
+def _decode_block(block: bytes, parity_len: int) -> bytes:
+    """Correct one codeword and return its data bytes.
+
+    Syndromes, Berlekamp-Massey, Chien search and Forney, then a syndrome
+    check of the corrected block, in the crate's order and with its tests.
+
+    Complexity: O(n * parity_len).
+
+    Raises:
+        RsUncorrectableError: On any inconsistency; the decoder never
+            returns a block whose syndromes are not all zero.
+    """
+    n = len(block)
+    data_len = n - parity_len
+    synd = _syndromes(block, parity_len)
+    if not any(synd):
+        return block[:data_len]
+    lam_le = _berlekamp_massey(synd)
+    degree = len(lam_le) - 1
+    if degree == 0 or degree > parity_len // 2:
+        raise RsUncorrectableError("lambda degree > t")
+    positions = _chien_search(lam_le[::-1], n)
+    if len(positions) != degree:
+        raise RsUncorrectableError("Chien root count != lambda degree")
+    corrected = bytearray(block)
+    for j, mag in zip(positions, _forney(synd, lam_le, positions, n), strict=True):
+        corrected[j] ^= mag
+    if any(_syndromes(corrected, parity_len)):
+        raise RsUncorrectableError("post-correction syndromes nonzero")
+    return bytes(corrected[:data_len])
+
+
 def _poly_mul(a: list[int], b: list[int]) -> list[int]:
     """Multiply two big-endian polynomials."""
     out = [0] * (len(a) + len(b) - 1)
@@ -118,3 +266,37 @@ class ReedSolomon:
             block[self._data_len :] = _poly_remainder(block, self._generator)
             out += bytes(block)
         return bytes(out)
+
+    def decode(self, encoded: bytes, original_len: int) -> bytes:
+        """Correct every codeword, then truncate to ``original_len``.
+
+        Complexity: O(len(encoded) * parity_len) per clean codeword, plus
+        O(n * t) for each codeword with errors.
+
+        Args:
+            encoded: Whole codewords.
+            original_len: The data length to recover; it must need exactly
+                as many codewords as ``encoded`` holds.
+
+        Returns:
+            The first ``original_len`` data bytes.
+
+        Raises:
+            RsInvalidInputError: If the lengths are inconsistent.
+            RsUncorrectableError: If a codeword cannot be corrected.
+        """
+        n = self._data_len + self._parity_len
+        if not encoded:
+            if original_len == 0:
+                return b""
+            raise RsInvalidInputError("empty encoded but original_len > 0")
+        if len(encoded) % n:
+            raise RsInvalidInputError("encoded length not a multiple of n")
+        blocks = len(encoded) // n
+        needed = -(-original_len // self._data_len)
+        if needed != blocks or original_len > blocks * self._data_len:
+            raise RsInvalidInputError("original_len inconsistent with blocks")
+        out = bytearray()
+        for start in range(0, len(encoded), n):
+            out += _decode_block(encoded[start : start + n], self._parity_len)
+        return bytes(out[:original_len])
