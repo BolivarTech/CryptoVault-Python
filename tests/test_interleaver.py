@@ -3,7 +3,12 @@
 # Date: 2026-10-16
 """The interleavers permute bytes exactly as the crate's do."""
 
-from cryptovault.error import CryptoVaultError
+import pytest
+from cryptography.exceptions import UnsupportedAlgorithm
+from cryptography.hazmat.primitives.ciphers import algorithms
+
+from cryptovault.constants import RS_BLOCK
+from cryptovault.error import CryptoVaultError, ErrorCorrectionError
 from cryptovault.fec import BlockInterleaver, CsprngLayer, Interleaver
 from tests.conftest import load_rust_fec_fixtures
 
@@ -64,3 +69,16 @@ def test_interleaver_composes_block_then_csprng_as_the_crate() -> None:
         stream = bytes.fromhex(case["stream"])
         assert interleaver.interleave(stream).hex() == case["interleaved"]
         assert interleaver.deinterleave(bytes.fromhex(case["interleaved"])) == stream
+
+
+def test_csprng_backend_without_chacha20_is_an_error_correction_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def unsupported(key: bytes, nonce: bytes) -> None:
+        raise UnsupportedAlgorithm("ChaCha20 is not supported by this OpenSSL")
+
+    monkeypatch.setattr(algorithms, "ChaCha20", unsupported)
+    with pytest.raises(ErrorCorrectionError) as caught:
+        CsprngLayer(bytes(32)).interleave(bytes(10), RS_BLOCK)
+    assert caught.value.message.startswith("ChaCha20 is unavailable: ")
+    assert isinstance(caught.value.__cause__, UnsupportedAlgorithm)
