@@ -36,6 +36,11 @@ class BlockInterleaver:
         """Interleave depth: codewords per window."""
         return self._depth
 
+    @property
+    def window_len(self) -> int:
+        """Window span in bytes: ``depth * RS_BLOCK``."""
+        return self._depth * RS_BLOCK
+
     def interleave(self, rs_stream: bytes) -> bytes:
         """Reorder ``rs_stream`` to spread bursts across codewords.
 
@@ -194,7 +199,10 @@ class Interleaver:
         Returns:
             The interleaved stream.
         """
-        raise NotImplementedError
+        blocked = self._block.interleave(stream)
+        if self._csprng is None:
+            return blocked
+        return self._csprng.interleave(blocked, self._block.window_len)
 
     def deinterleave(self, stream: bytes) -> bytes:
         """Undo :meth:`interleave`.
@@ -205,4 +213,6 @@ class Interleaver:
         Returns:
             The Reed-Solomon stream.
         """
-        raise NotImplementedError
+        if self._csprng is not None:
+            stream = self._csprng.deinterleave(stream, self._block.window_len)
+        return self._block.deinterleave(stream)
