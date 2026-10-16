@@ -11,11 +11,12 @@ Reed-Solomon, interleaver and Viterbi codecs come in a later stage.
 
 from typing import Final, Protocol
 
-from cryptovault.constants import MAX_BLOB_LEN, RS_BLOCK, RS_DATA
+from cryptovault.constants import KEY_LEN, MAX_BLOB_LEN, RS_BLOCK, RS_DATA
 from cryptovault.error import InvalidInputError
 from cryptovault.fec.interleaver import BlockInterleaver, CsprngLayer, Interleaver
 from cryptovault.fec.rs import ReedSolomonCodec
 from cryptovault.fec.viterbi import ViterbiCodec, ViterbiOnlyFec, _rs_len_from_body
+from cryptovault.kdf import expand_interleaver_seed
 
 _DEFAULT_INTERLEAVE_DEPTH: Final = 5
 """Interleave depth of the default stack, the CCSDS baseline."""
@@ -173,8 +174,16 @@ class ConcatenatedFec:
 
         Returns:
             The concatenated FEC with the CSPRNG layer.
+
+        Raises:
+            InvalidInputError: If ``master`` is not ``KEY_LEN`` bytes, checked
+                first, or ``depth`` is out of range.
         """
-        raise NotImplementedError
+        if len(master) != KEY_LEN:
+            raise InvalidInputError(f"master key must be exactly {KEY_LEN} bytes")
+        seed = expand_interleaver_seed(master)
+        interleaver = Interleaver(BlockInterleaver(depth), CsprngLayer(seed))
+        return cls(ReedSolomonCodec(), interleaver, ViterbiCodec())
 
     def encode(self, data: bytes) -> bytes:
         """Encode ``data`` through ``Viterbi(interleave(RS(data)))``.
