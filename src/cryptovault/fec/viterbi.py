@@ -5,7 +5,7 @@
 
 from typing import Final
 
-from cryptovault.constants import TERMINATION_OVERHEAD, VITERBI_CHUNK
+from cryptovault.constants import MAX_BLOB_LEN, TERMINATION_OVERHEAD, VITERBI_CHUNK
 from cryptovault.error import InvalidInputError
 from cryptovault.fec import _viterbi
 
@@ -83,7 +83,7 @@ class ViterbiOnlyFec:
         Returns:
             The coded blob body.
         """
-        raise NotImplementedError
+        return ViterbiCodec().encode(data)
 
     def decode(self, encoded: bytes, pre_len: int) -> bytes:
         """Viterbi-decode, then truncate to ``pre_len`` bytes.
@@ -93,9 +93,12 @@ class ViterbiOnlyFec:
             pre_len: The payload length to keep.
 
         Returns:
-            The recovered payload.
+            The recovered payload, at most ``pre_len`` bytes.
+
+        Raises:
+            InvalidInputError: If the length cannot be a chunked coded body.
         """
-        raise NotImplementedError
+        return ViterbiCodec().decode(encoded)[:pre_len]
 
     def validate_pre_fec(self, received: bytes) -> int:
         """Check the framing before decoding.
@@ -105,5 +108,20 @@ class ViterbiOnlyFec:
 
         Returns:
             The payload length the body decodes to.
+
+        Raises:
+            InvalidInputError: If ``received`` is longer than ``MAX_BLOB_LEN``
+                or cannot be a chunked coded body.
         """
-        raise NotImplementedError
+        if len(received) > MAX_BLOB_LEN:
+            raise InvalidInputError("input exceeds maximum size")
+        return _rs_len_from_body(len(received))
+
+
+def _rs_len_from_body(body_len: int) -> int:
+    """Return the info length a chunked coded body of ``body_len`` bytes carries.
+
+    Raises:
+        InvalidInputError: If ``body_len`` cannot be a chunked coded body.
+    """
+    return sum(body // 2 - 1 for body in _chunk_body_lengths(body_len))
