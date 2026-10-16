@@ -8,7 +8,7 @@ import hashlib
 import pytest
 
 from cryptovault.error import CryptoVaultError
-from cryptovault.fec import ViterbiCodec, _viterbi
+from cryptovault.fec import ViterbiCodec, ViterbiOnlyFec, _viterbi
 from tests.conftest import load_rust_fec_fixtures
 
 
@@ -51,3 +51,23 @@ def test_clean_viterbi_body_decodes_without_the_trellis(
     monkeypatch.setattr(_viterbi, "_trellis_decode", no_trellis)
     stream = bytes(range(256)) * 600
     assert ViterbiCodec().decode(ViterbiCodec().encode(stream)) == stream
+
+
+def test_viterbi_only_fec_frames_and_truncates_as_the_crate() -> None:
+    cases = load_rust_fec_fixtures()["viterbi_only"]
+    assert len(cases) == 12
+    fec = ViterbiOnlyFec()
+    for case in cases:
+        received = bytes.fromhex(case["received"])
+        got: dict[str, object] = {}
+        try:
+            got["validate"] = fec.validate_pre_fec(received)
+        except CryptoVaultError as error:
+            got["validate"] = str(error)
+        try:
+            got["decode"] = fec.decode(received, case["pre_len"]).hex()
+        except CryptoVaultError as error:
+            got["decode"] = str(error)
+        if "data" in case:
+            got["encode"] = fec.encode(bytes.fromhex(case["data"])) == received
+        assert got == case["expect"], case["label"]

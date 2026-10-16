@@ -15,7 +15,7 @@ from cryptovault.constants import MAX_BLOB_LEN
 from cryptovault.error import InvalidInputError
 from cryptovault.fec.interleaver import BlockInterleaver, CsprngLayer, Interleaver
 from cryptovault.fec.rs import ReedSolomonCodec
-from cryptovault.fec.viterbi import ViterbiCodec
+from cryptovault.fec.viterbi import ViterbiCodec, ViterbiOnlyFec
 
 __all__ = [
     "BlockInterleaver",
@@ -25,6 +25,7 @@ __all__ = [
     "NoFec",
     "ReedSolomonCodec",
     "ViterbiCodec",
+    "ViterbiOnlyFec",
 ]
 
 

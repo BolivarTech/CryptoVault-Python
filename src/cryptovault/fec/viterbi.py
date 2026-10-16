@@ -69,3 +69,41 @@ def _chunk_body_lengths(total: int) -> list[int]:
             raise InvalidInputError("malformed blob")
         bodies.append(rest)
     return bodies
+
+
+class ViterbiOnlyFec:
+    """AEAD plus Viterbi only: no Reed-Solomon and no interleaver."""
+
+    def encode(self, data: bytes) -> bytes:
+        """Viterbi-encode the protected payload.
+
+        Args:
+            data: The protected payload.
+
+        Returns:
+            The coded blob body.
+        """
+        raise NotImplementedError
+
+    def decode(self, encoded: bytes, pre_len: int) -> bytes:
+        """Viterbi-decode, then truncate to ``pre_len`` bytes.
+
+        Args:
+            encoded: The received coded body.
+            pre_len: The payload length to keep.
+
+        Returns:
+            The recovered payload.
+        """
+        raise NotImplementedError
+
+    def validate_pre_fec(self, received: bytes) -> int:
+        """Check the framing before decoding.
+
+        Args:
+            received: The base64-decoded blob.
+
+        Returns:
+            The payload length the body decodes to.
+        """
+        raise NotImplementedError

@@ -10,6 +10,7 @@ use std::process::ExitCode;
 
 use cryptovault::fec::{
     BlockInterleaver, CsprngLayer, ErrorCorrection, Interleaver, ReedSolomonCodec, ViterbiCodec,
+    ViterbiOnlyFec,
 };
 use cryptovault::{
     KEY_LEN, MAX_BLOB_LEN, RS_BLOCK, RS_DATA, RS_INTERLEAVE_MAX, RS_PARITY, TERMINATION_OVERHEAD,
@@ -370,6 +371,52 @@ fn viterbi_decode() -> Vec<Value> {
     cases
 }
 
+/// Renders a crate result as its value or its `Display` text.
+fn value_or_error<T: Into<Value>>(result: cryptovault::Result<T>) -> Value {
+    match result {
+        Ok(value) => value.into(),
+        Err(error) => json!(error.to_string()),
+    }
+}
+
+/// `ViterbiOnlyFec` framing, decode and truncation over encoded payloads and
+/// junk; read by `test_viterbi_only_fec_frames_and_truncates_as_the_crate`.
+fn viterbi_only() -> Vec<Value> {
+    let fec = ViterbiOnlyFec;
+    let mut cases = Vec::new();
+    let mut push = |label: &str, data: Option<Vec<u8>>, received: Vec<u8>, pre_len: usize| {
+        let mut expect = json!({
+            "validate": value_or_error(fec.validate_pre_fec(&received)),
+            "decode": value_or_error(fec.decode(&received, pre_len).map(hex::encode)),
+        });
+        let mut case =
+            json!({ "label": label, "received": hex::encode(&received), "pre_len": pre_len });
+        if let Some(data) = data {
+            expect["encode"] = json!(fec.encode(&data) == received);
+            case["data"] = json!(hex::encode(&data));
+        }
+        case["expect"] = expect;
+        cases.push(case);
+    };
+    for len in [0usize, 33, 100, 300, 700] {
+        let data = pattern(300 + len as u32, len);
+        let received = fec.encode(&data);
+        push(&format!("{len}-byte payload"), Some(data), received, len);
+    }
+    let blob = fec.encode(&pattern(600, 300));
+    push("truncate to 10 bytes", None, blob.clone(), 10);
+    push("pre_len past the payload", None, blob, 1000);
+    for len in [1usize, 3, 5, 7, 64] {
+        push(
+            &format!("{len}-byte junk"),
+            None,
+            pattern(700 + len as u32, len),
+            len,
+        );
+    }
+    cases
+}
+
 /// Prints the full FEC fixture document.
 pub fn fec_fixtures() -> ExitCode {
     let document = json!({
@@ -389,6 +436,7 @@ pub fn fec_fixtures() -> ExitCode {
         "interleaver": interleaver(),
         "viterbi_encode": viterbi_encode(),
         "viterbi_decode": viterbi_decode(),
+        "viterbi_only": viterbi_only(),
     });
     println!(
         "{}",
