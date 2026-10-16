@@ -3,11 +3,27 @@
 # Date: 2026-10-16
 """``Aes256GcmSivCipher`` is AES-256-GCM-SIV with the crate's errors (CV-01)."""
 
+import os
+
 import pytest
 from cryptography.exceptions import InvalidTag
 
-from cryptovault.cipher import Aes256GcmSivCipher
+from cryptovault.cipher import Aes256GcmSivCipher, sample_nonce
 from cryptovault.error import CipherError
+
+
+def test_sample_nonce_fails_closed_when_the_os_has_no_entropy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def no_entropy(size: int) -> bytes:
+        raise OSError("entropy source unavailable")
+
+    monkeypatch.setattr(os, "urandom", no_entropy)
+    with pytest.raises(CipherError) as caught:
+        sample_nonce()
+    assert caught.value.message.startswith("OsRng nonce sampling failed: ")
+    assert isinstance(caught.value.__cause__, OSError)
+
 
 # RFC 8452, Appendix C.2 (AEAD_AES_256_GCM_SIV): key, nonce, aad, plaintext,
 # ciphertext followed by the tag.

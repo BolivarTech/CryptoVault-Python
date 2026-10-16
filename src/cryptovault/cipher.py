@@ -14,6 +14,11 @@ from cryptovault.error import CipherError
 _AUTH_FAILED: Final = "AES-256-GCM-SIV authentication failed"
 
 
+def sample_nonce() -> bytes:
+    """Draw a fresh nonce from the operating-system CSPRNG."""
+    raise NotImplementedError
+
+
 class Aes256GcmSivCipher:
     """AES-256-GCM-SIV, the crate's ``Aes256GcmSivCipher``.
 
