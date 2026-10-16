@@ -6,8 +6,9 @@
 import base64
 import struct
 
+from cryptovault._blob import decode_blob
 from cryptovault.cipher import Aes256GcmSivCipher
-from cryptovault.constants import HEADER_LEN, NONCE_LEN, TAG_LEN
+from cryptovault.constants import NONCE_LEN
 from cryptovault.fec import NoFec
 from cryptovault.kdf import Argon2Kdf, expand_aead_key
 
@@ -26,10 +27,8 @@ class CryptoVault:
     def decrypt_with_key(self, key: bytes, blob: str) -> str:
         """Decrypt a data blob."""
         received = base64.b64decode(blob)
-        protected = self._fec.decode(received, self._fec.validate_pre_fec(received))
-        (plaintext_len,) = struct.unpack_from("<I", protected, 1)
-        header = protected[:HEADER_LEN]
-        body = protected[HEADER_LEN : HEADER_LEN + NONCE_LEN + plaintext_len + TAG_LEN]
+        version, plaintext_len, body = decode_blob(self._fec, received)
+        header = bytes([version]) + struct.pack("<I", plaintext_len)
         aad = bytes([_AAD_PURPOSE_DATA]) + header
         nonce, sealed = body[:NONCE_LEN], body[NONCE_LEN:]
         plaintext = self._cipher.decrypt(expand_aead_key(key), nonce, aad, sealed)
