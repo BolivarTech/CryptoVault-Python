@@ -56,6 +56,18 @@ fn adversarial(vault: &CryptoVault) -> Vec<Value> {
     for (label, blob) in &encodings {
         cases.push(decrypt_case(vault, "encoding", label, &key, blob));
     }
+    // Group "key", read by test_master_key_must_be_exactly_32_bytes_as_in_the_crate.
+    let mut long_key = key.clone();
+    long_key.push(0);
+    let keys = [
+        ("wrong key", counting(0x80, KEY_LEN)),
+        ("key of 31 bytes", key[..31].to_vec()),
+        ("key of 33 bytes", long_key),
+        ("empty key", Vec::new()),
+    ];
+    for (label, other) in &keys {
+        cases.push(decrypt_case(vault, "key", label, other, &base));
+    }
     cases
 }
 
