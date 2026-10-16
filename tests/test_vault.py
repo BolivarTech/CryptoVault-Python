@@ -11,8 +11,8 @@ from collections.abc import Callable
 import pytest
 
 from cryptovault.cipher import Aes256GcmSivCipher
-from cryptovault.constants import MAX_B64_LEN
-from cryptovault.error import CryptoVaultError, InvalidInputError
+from cryptovault.constants import MAX_B64_LEN, MAX_PLAINTEXT_LEN
+from cryptovault.error import CryptoVaultError, EncodingError, InvalidInputError
 from cryptovault.fec import NoFec
 from cryptovault.kdf import Argon2Kdf
 from cryptovault.vault import CryptoVault
@@ -125,3 +125,38 @@ def test_encrypt_produces_a_fresh_blob_in_the_crate_layout(plaintext: str) -> No
     assert raw[:5] == b"\x01" + struct.pack("<I", len(encoded))
     assert len(raw) == 5 + 12 + len(encoded) + 16
     assert vault.decrypt_with_key(key, blob) == plaintext
+
+
+@pytest.mark.parametrize(
+    ("key", "plaintext", "error"),
+    [
+        (bytes(31), "hi", InvalidInputError("master key must be exactly 32 bytes")),
+        (bytes(33), "hi", InvalidInputError("master key must be exactly 32 bytes")),
+        (
+            bytes(32),
+            "x" * (MAX_PLAINTEXT_LEN + 1),
+            InvalidInputError("plaintext exceeds maximum size"),
+        ),
+        # Counted in UTF-8 bytes: 5 Mi + 1 two-byte characters exceed 10 MiB.
+        (
+            bytes(32),
+            "é" * (MAX_PLAINTEXT_LEN // 2 + 1),
+            InvalidInputError("plaintext exceeds maximum size"),
+        ),
+        (
+            bytes(32),
+            "lone \ud800 surrogate",
+            EncodingError("plaintext is not valid UTF-8"),
+        ),
+        # The key is checked first, as in the crate.
+        (bytes(31), "\ud800", InvalidInputError("master key must be exactly 32 bytes")),
+    ],
+    ids=["key-31", "key-33", "too-long", "too-long-utf8", "surrogate", "key-first"],
+)
+def test_encrypt_rejects_invalid_input_before_encrypting(
+    key: bytes, plaintext: str, error: CryptoVaultError
+) -> None:
+    with pytest.raises(CryptoVaultError) as caught:
+        make_vault().encrypt_with_key(key, plaintext)
+    assert type(caught.value) is type(error)
+    assert caught.value.message == error.message
