@@ -53,3 +53,19 @@ def test_default_stack_encodes_as_the_crate_default() -> None:
     for case in cases:
         encoded = ConcatenatedFec.default().encode(bytes.fromhex(case["data"]))
         assert hashlib.sha256(encoded).hexdigest() == case["encoded_sha256"]
+
+
+def test_csprng_stack_from_master_matches_the_crate_and_its_errors() -> None:
+    cases = load_rust_fec_fixtures()["concatenated_from_master"]
+    assert len(cases) == 6
+    for case in cases:
+        try:
+            fec = ConcatenatedFec.with_csprng_from_master(
+                bytes.fromhex(case["master"]), case["depth"]
+            )
+        except CryptoVaultError as error:
+            got = str(error)
+        else:
+            encoded = fec.encode(bytes.fromhex(case["data"]))
+            got = hashlib.sha256(encoded).hexdigest()
+        assert got == case["expect"], case["label"]

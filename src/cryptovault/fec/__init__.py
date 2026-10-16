@@ -163,6 +163,19 @@ class ConcatenatedFec:
         interleaver = Interleaver(BlockInterleaver(_DEFAULT_INTERLEAVE_DEPTH), None)
         return cls(ReedSolomonCodec(), interleaver, ViterbiCodec())
 
+    @classmethod
+    def with_csprng_from_master(cls, master: bytes, depth: int) -> "ConcatenatedFec":
+        """Build a stack with the CSPRNG layer seeded from ``master``.
+
+        Args:
+            master: The 32-byte master key.
+            depth: The block interleaver depth.
+
+        Returns:
+            The concatenated FEC with the CSPRNG layer.
+        """
+        raise NotImplementedError
+
     def encode(self, data: bytes) -> bytes:
         """Encode ``data`` through ``Viterbi(interleave(RS(data)))``.
 

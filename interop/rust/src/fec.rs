@@ -582,6 +582,37 @@ fn concatenated_default() -> Vec<Value> {
         .collect()
 }
 
+/// `ConcatenatedFec::with_csprng_from_master` encodings and errors; read by
+/// `test_csprng_stack_from_master_matches_the_crate_and_its_errors`.
+fn concatenated_from_master() -> Vec<Value> {
+    let master = pattern(970, KEY_LEN);
+    let data = pattern(971, 900);
+    let inputs: [(&str, Vec<u8>, usize); 6] = [
+        ("depth 5", master.clone(), 5),
+        ("depth 1", master.clone(), 1),
+        ("depth 16", master.clone(), RS_INTERLEAVE_MAX),
+        ("depth 0", master.clone(), 0),
+        ("depth 17", master, RS_INTERLEAVE_MAX + 1),
+        ("empty master", Vec::new(), 5),
+    ];
+    inputs
+        .iter()
+        .map(|(label, master, depth)| {
+            let expect = match ConcatenatedFec::with_csprng_from_master(master, *depth) {
+                Ok(fec) => sha256_hex(&fec.encode(&data)),
+                Err(error) => error.to_string(),
+            };
+            json!({
+                "label": label,
+                "master": hex::encode(master),
+                "depth": depth,
+                "data": hex::encode(&data),
+                "expect": expect,
+            })
+        })
+        .collect()
+}
+
 /// Prints the full FEC fixture document.
 pub fn fec_fixtures() -> ExitCode {
     let document = json!({
@@ -605,6 +636,7 @@ pub fn fec_fixtures() -> ExitCode {
         "concatenated": concatenated(),
         "interleaver_seed": interleaver_seed(),
         "concatenated_default": concatenated_default(),
+        "concatenated_from_master": concatenated_from_master(),
     });
     println!(
         "{}",
