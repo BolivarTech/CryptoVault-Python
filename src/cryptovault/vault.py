@@ -134,14 +134,7 @@ class CryptoVault:
             data = plaintext.encode("utf-8")
         except UnicodeEncodeError as exc:
             raise EncodingError("plaintext is not valid UTF-8") from exc
-        if len(data) > MAX_PLAINTEXT_LEN:
-            raise InvalidInputError("plaintext exceeds maximum size")
-        header = bytes([BLOB_VERSION]) + struct.pack("<I", len(data))
-        aad = bytes([_AAD_PURPOSE_DATA]) + header
-        nonce = sample_nonce()
-        sealed = self._cipher.encrypt(expand_aead_key(key), nonce, aad, data)
-        blob = self._fec.encode(header + nonce + sealed)
-        return base64.b64encode(blob).decode("ascii")
+        return self._encrypt_bytes(key, data, _AAD_PURPOSE_DATA, b"")
 
     def decrypt_with_key(self, key: bytes, blob: str) -> str:
         """Decrypt a data blob."""
