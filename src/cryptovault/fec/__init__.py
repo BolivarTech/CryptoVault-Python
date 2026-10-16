@@ -147,6 +147,15 @@ class ConcatenatedFec:
         self._il = il
         self._vt = vt
 
+    @classmethod
+    def default(cls) -> "ConcatenatedFec":
+        """Build the crate's default stack.
+
+        Returns:
+            The default concatenated FEC.
+        """
+        raise NotImplementedError
+
     def encode(self, data: bytes) -> bytes:
         """Encode ``data`` through ``Viterbi(interleave(RS(data)))``.
 

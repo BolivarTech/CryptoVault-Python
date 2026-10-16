@@ -567,6 +567,21 @@ fn interleaver_seed() -> Vec<Value> {
     .collect()
 }
 
+/// `ConcatenatedFec::default` encodings; read by
+/// `test_default_stack_encodes_as_the_crate_default`.
+fn concatenated_default() -> Vec<Value> {
+    [1usize, 600, 7 * RS_BLOCK]
+        .iter()
+        .map(|&len| {
+            let data = pattern(950 + len as u32, len);
+            json!({
+                "data": hex::encode(&data),
+                "encoded_sha256": sha256_hex(&ConcatenatedFec::default().encode(&data)),
+            })
+        })
+        .collect()
+}
+
 /// Prints the full FEC fixture document.
 pub fn fec_fixtures() -> ExitCode {
     let document = json!({
@@ -589,6 +604,7 @@ pub fn fec_fixtures() -> ExitCode {
         "viterbi_only": viterbi_only(),
         "concatenated": concatenated(),
         "interleaver_seed": interleaver_seed(),
+        "concatenated_default": concatenated_default(),
     });
     println!(
         "{}",

@@ -45,3 +45,11 @@ def test_concatenated_fec_encodes_corrects_and_fails_as_the_crate() -> None:
         if "data" in case:
             got["encode"] = fec.encode(bytes.fromhex(case["data"])) == received
         assert got == case["expect"], case["label"]
+
+
+def test_default_stack_encodes_as_the_crate_default() -> None:
+    cases = load_rust_fec_fixtures()["concatenated_default"]
+    assert len(cases) == 3
+    for case in cases:
+        encoded = ConcatenatedFec.default().encode(bytes.fromhex(case["data"]))
+        assert hashlib.sha256(encoded).hexdigest() == case["encoded_sha256"]
