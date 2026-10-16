@@ -39,11 +39,12 @@ requires = ["uv_build>=0.13.0,<0.14"]
 build-backend = "uv_build"
 
 [tool.pytest.ini_options]
-testpaths = ["tests", "scripts", "src"]
+testpaths = ["tests", "scripts", "src", "README.md"]
 addopts = [
     "--strict-markers",
     "--strict-config",
     "--doctest-modules",
+    "--doctest-glob=README.md",
     "-m",
     "not interop",
 ]
