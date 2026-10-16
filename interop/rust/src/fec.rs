@@ -42,6 +42,80 @@ fn rs_encode() -> Vec<Value> {
         .collect()
 }
 
+/// Maps a crate result to `{"ok": <hex>}` or `{"error": "<Display>"}`.
+fn outcome(result: cryptovault::Result<Vec<u8>>) -> Value {
+    match result {
+        Ok(bytes) => json!({ "ok": hex::encode(bytes) }),
+        Err(error) => json!({ "error": error.to_string() }),
+    }
+}
+
+/// Records the crate's answer to `ReedSolomonCodec::decode(encoded, pre_len)`.
+fn rs_decode_case(label: &str, encoded: &[u8], pre_len: usize) -> Value {
+    json!({
+        "label": label,
+        "encoded": hex::encode(encoded),
+        "pre_len": pre_len,
+        "expect": outcome(ReedSolomonCodec.decode(encoded, pre_len)),
+    })
+}
+
+/// Reed-Solomon decode outcomes: clean streams, 1 to 24 symbol errors in one
+/// codeword, random blocks, and malformed lengths; read by
+/// `test_rs_decode_corrects_and_fails_exactly_as_the_crate` (key `rs_decode`).
+fn rs_decode() -> Vec<Value> {
+    let mut cases = Vec::new();
+    let data = pattern(7, 600);
+    let clean = ReedSolomonCodec.encode(&data);
+    cases.push(rs_decode_case("clean three codewords", &clean, data.len()));
+    for errors in 1..=24usize {
+        for trial in 0..4u32 {
+            let mut bytes = clean.clone();
+            let noise = pattern(1000 * errors as u32 + trial, 2 * errors);
+            let mut used = Vec::new();
+            for e in 0..errors {
+                let mut pos = usize::from(noise[2 * e]) % RS_BLOCK + RS_BLOCK;
+                while used.contains(&pos) {
+                    pos = (pos + 1 - RS_BLOCK) % RS_BLOCK + RS_BLOCK;
+                }
+                used.push(pos);
+                bytes[pos] ^= noise[2 * e + 1].max(1);
+            }
+            let label = format!("{errors} errors in codeword 1, trial {trial}");
+            cases.push(rs_decode_case(&label, &bytes, data.len()));
+        }
+    }
+    for trial in 0..40u32 {
+        let block = pattern(50_000 + trial, RS_BLOCK);
+        let label = format!("random codeword {trial}");
+        cases.push(rs_decode_case(&label, &block, RS_DATA));
+    }
+    let single = ReedSolomonCodec.encode(&data[..RS_DATA]);
+    let mut parity_hit = single.clone();
+    for byte in parity_hit.iter_mut().skip(RS_DATA).take(16) {
+        *byte ^= 0x5a;
+    }
+    let structural: [(&str, &[u8], usize); 9] = [
+        ("16 errors in the parity bytes", &parity_hit, RS_DATA),
+        ("empty stream, empty data", &[], 0),
+        ("empty stream, data expected", &[], 5),
+        (
+            "one byte short of a codeword",
+            &single[..RS_BLOCK - 1],
+            RS_DATA,
+        ),
+        ("one byte past a codeword", &clean[..RS_BLOCK + 1], RS_DATA),
+        ("pre_len zero for one codeword", &single, 0),
+        ("pre_len one past a codeword", &single, RS_DATA + 1),
+        ("pre_len of two codewords for one", &single, 2 * RS_DATA),
+        ("pre_len shorter than the data", &single, 100),
+    ];
+    for (label, encoded, pre_len) in structural {
+        cases.push(rs_decode_case(label, encoded, pre_len));
+    }
+    cases
+}
+
 /// Prints the full FEC fixture document.
 pub fn fec_fixtures() -> ExitCode {
     let document = json!({
@@ -52,6 +126,7 @@ pub fn fec_fixtures() -> ExitCode {
             "TERMINATION_OVERHEAD": TERMINATION_OVERHEAD,
         },
         "rs_encode": rs_encode(),
+        "rs_decode": rs_decode(),
     });
     println!(
         "{}",

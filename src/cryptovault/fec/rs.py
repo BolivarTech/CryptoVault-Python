@@ -22,3 +22,15 @@ class ReedSolomonCodec:
             The codewords.
         """
         return _RS.encode(data)
+
+    def decode(self, encoded: bytes, pre_len: int) -> bytes:
+        """Correct up to 16 symbol errors per codeword, then truncate.
+
+        Args:
+            encoded: The received codewords.
+            pre_len: The data length to recover.
+
+        Returns:
+            The recovered data.
+        """
+        raise NotImplementedError
