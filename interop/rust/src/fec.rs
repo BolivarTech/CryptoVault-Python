@@ -8,13 +8,16 @@
 
 use std::process::ExitCode;
 
+use cryptovault::cipher::Aes256GcmSivCipher;
 use cryptovault::fec::{
     BlockInterleaver, ConcatenatedFec, CsprngLayer, ErrorCorrection, Interleaver, ReedSolomonCodec,
     ViterbiCodec, ViterbiOnlyFec,
 };
+use cryptovault::kdf::Argon2Kdf;
+use cryptovault::CryptoVault;
 use cryptovault::{
-    KEY_LEN, MAX_BLOB_LEN, RS_BLOCK, RS_DATA, RS_INTERLEAVE_MAX, RS_PARITY, TERMINATION_OVERHEAD,
-    VITERBI_CHUNK,
+    KEY_LEN, MAX_BLOB_LEN, RS_BLOCK, RS_DATA, RS_INTERLEAVE_MAX, RS_PARITY, SALT_LEN,
+    TERMINATION_OVERHEAD, VITERBI_CHUNK,
 };
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -613,6 +616,71 @@ fn concatenated_from_master() -> Vec<Value> {
         .collect()
 }
 
+/// The vault FEC strategies the fixtures cover, as the JSON spec Python reads.
+fn strategies() -> Vec<Value> {
+    vec![
+        json!({ "name": "ConcatenatedFec" }),
+        json!({ "name": "ViterbiOnlyFec" }),
+        json!({ "name": "ReedSolomonCodec" }),
+        json!({ "name": "CsprngFromMaster", "master": hex::encode(pattern(990, KEY_LEN)), "depth": 5 }),
+    ]
+}
+
+/// Builds the vault a strategy spec names; panics on an unknown spec, which is
+/// a bug in this tool.
+pub fn vault_for(spec: &Value) -> CryptoVault {
+    let fec: Box<dyn ErrorCorrection> = match spec["name"].as_str() {
+        Some("ConcatenatedFec") => Box::new(ConcatenatedFec::default()),
+        Some("ViterbiOnlyFec") => Box::new(ViterbiOnlyFec),
+        Some("ReedSolomonCodec") => Box::new(ReedSolomonCodec),
+        Some("CsprngFromMaster") => {
+            let master = hex::decode(spec["master"].as_str().expect("master")).expect("hex");
+            let depth = spec["depth"].as_u64().expect("depth") as usize;
+            Box::new(ConcatenatedFec::with_csprng_from_master(&master, depth).expect("stack"))
+        }
+        other => panic!("unknown FEC strategy {other:?}"),
+    };
+    CryptoVault::new(Box::new(Argon2Kdf), Box::new(Aes256GcmSivCipher), fec)
+}
+
+/// Data and envelope blobs the crate produces under each FEC strategy; read by
+/// `test_every_crate_blob_opens_under_its_fec_strategy`.
+fn vault_blobs() -> Vec<Value> {
+    let key = pattern(991, KEY_LEN);
+    let kek = pattern(992, KEY_LEN);
+    let plaintexts = [
+        String::new(),
+        "a".to_string(),
+        "sk-secret".to_string(),
+        "\u{f1}and\u{fa} \u{1f510} \u{4e2d}\u{6587}".to_string(),
+        "x".repeat(1000),
+    ];
+    let envelopes = [
+        (pattern(993, SALT_LEN), pattern(994, KEY_LEN)),
+        (Vec::new(), pattern(995, KEY_LEN)),
+        (pattern(996, SALT_LEN), Vec::new()),
+        (vec![0xaa; 40], vec![0x55; 64]),
+    ];
+    let mut rows = Vec::new();
+    for spec in strategies() {
+        let vault = vault_for(&spec);
+        for plaintext in &plaintexts {
+            rows.push(json!({
+                "fec": spec, "kind": "data", "key": hex::encode(&key), "plaintext": plaintext,
+                "blob": vault.encrypt_with_key(&key, plaintext).expect("encrypt"),
+            }));
+        }
+        for (salt, material) in &envelopes {
+            rows.push(json!({
+                "fec": spec, "kind": "envelope", "kek": hex::encode(&kek),
+                "salt": hex::encode(salt), "key_material": hex::encode(material),
+                "blob": vault.wrap_key(&kek, salt, material).expect("wrap"),
+            }));
+        }
+    }
+    rows
+}
+
 /// Prints the full FEC fixture document.
 pub fn fec_fixtures() -> ExitCode {
     let document = json!({
@@ -637,6 +705,7 @@ pub fn fec_fixtures() -> ExitCode {
         "interleaver_seed": interleaver_seed(),
         "concatenated_default": concatenated_default(),
         "concatenated_from_master": concatenated_from_master(),
+        "vault_blobs": vault_blobs(),
     });
     println!(
         "{}",
