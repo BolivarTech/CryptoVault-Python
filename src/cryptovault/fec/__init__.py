@@ -19,6 +19,7 @@ from cryptovault.fec.viterbi import ViterbiCodec, ViterbiOnlyFec
 
 __all__ = [
     "BlockInterleaver",
+    "ConcatenatedFec",
     "CsprngLayer",
     "ErrorCorrection",
     "Interleaver",
@@ -129,3 +130,53 @@ class NoFec:
         if len(received) > MAX_BLOB_LEN:
             raise InvalidInputError("input exceeds maximum size")
         return len(received)
+
+
+class ConcatenatedFec:
+    """Reed-Solomon, then interleaver, then Viterbi: the crate's default FEC.
+
+    Args:
+        rs: The outer Reed-Solomon code.
+        il: The interleaver.
+        vt: The inner Viterbi code.
+    """
+
+    def __init__(self, rs: ReedSolomonCodec, il: Interleaver, vt: ViterbiCodec) -> None:
+        """Compose the three stages."""
+        self._rs = rs
+        self._il = il
+        self._vt = vt
+
+    def encode(self, data: bytes) -> bytes:
+        """Encode ``data`` through ``Viterbi(interleave(RS(data)))``.
+
+        Args:
+            data: The protected payload.
+
+        Returns:
+            The coded blob body.
+        """
+        raise NotImplementedError
+
+    def decode(self, encoded: bytes, pre_len: int) -> bytes:
+        """Invert :meth:`encode`, correcting errors.
+
+        Args:
+            encoded: The received coded body.
+            pre_len: The payload length to recover.
+
+        Returns:
+            The recovered payload.
+        """
+        raise NotImplementedError
+
+    def validate_pre_fec(self, received: bytes) -> int:
+        """Check the framing before decoding.
+
+        Args:
+            received: The base64-decoded blob.
+
+        Returns:
+            The Reed-Solomon data length the body decodes to.
+        """
+        raise NotImplementedError

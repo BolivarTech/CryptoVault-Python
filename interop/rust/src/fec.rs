@@ -9,8 +9,8 @@
 use std::process::ExitCode;
 
 use cryptovault::fec::{
-    BlockInterleaver, CsprngLayer, ErrorCorrection, Interleaver, ReedSolomonCodec, ViterbiCodec,
-    ViterbiOnlyFec,
+    BlockInterleaver, ConcatenatedFec, CsprngLayer, ErrorCorrection, Interleaver, ReedSolomonCodec,
+    ViterbiCodec, ViterbiOnlyFec,
 };
 use cryptovault::{
     KEY_LEN, MAX_BLOB_LEN, RS_BLOCK, RS_DATA, RS_INTERLEAVE_MAX, RS_PARITY, TERMINATION_OVERHEAD,
@@ -417,6 +417,140 @@ fn viterbi_only() -> Vec<Value> {
     cases
 }
 
+/// Builds the concatenated stack a fixture case names: depth and optional seed.
+fn stack(depth: usize, seed: Option<&[u8]>) -> ConcatenatedFec {
+    let block = BlockInterleaver::new(depth).expect("valid depth");
+    let interleaver = match seed {
+        None => Interleaver::Block(block),
+        Some(seed) => Interleaver::BlockThenCsprng(block, CsprngLayer::new(seed).expect("seed")),
+    };
+    ConcatenatedFec::new(ReedSolomonCodec, interleaver, ViterbiCodec)
+}
+
+/// `ConcatenatedFec` framing, correction and failure over clean, burst,
+/// obliterated and malformed bodies, on the default and injected stacks; read
+/// by `test_concatenated_fec_encodes_corrects_and_fails_as_the_crate`.
+fn concatenated() -> Vec<Value> {
+    let seed = pattern(800, KEY_LEN);
+    let mut cases = Vec::new();
+    let mut push = |label: &str,
+                    (depth, seed): (usize, Option<&[u8]>),
+                    data: Option<&[u8]>,
+                    received: &[u8],
+                    pre_len: usize| {
+        let fec = stack(depth, seed);
+        let decode = match fec.decode(received, pre_len) {
+            Ok(decoded) => json!(sha256_hex(&decoded)),
+            Err(error) => json!(error.to_string()),
+        };
+        let mut expect = json!({
+            "validate": value_or_error(fec.validate_pre_fec(received)),
+            "decode": decode,
+        });
+        let mut case = json!({
+            "label": label,
+            "stack": { "depth": depth, "seed": seed.map(hex::encode) },
+            "received": hex::encode(received),
+            "pre_len": pre_len,
+        });
+        if let Some(data) = data {
+            expect["encode"] = json!(fec.encode(data) == received);
+            case["data"] = json!(hex::encode(data));
+        }
+        case["expect"] = expect;
+        cases.push(case);
+    };
+    let default = (5, None);
+    let fec = stack(5, None);
+    let clean_data = pattern(801, 600);
+    let clean = fec.encode(&clean_data);
+    let rs_len = |body: &[u8]| fec.validate_pre_fec(body).unwrap_or(0);
+    push(
+        "clean 600 bytes",
+        default,
+        Some(&clean_data),
+        &clean,
+        rs_len(&clean),
+    );
+    let burst_data = pattern(802, 5 * RS_BLOCK);
+    let mut burst = fec.encode(&burst_data);
+    let start = burst.len() / 3;
+    for byte in burst.iter_mut().skip(start).take(24) {
+        *byte ^= 0xff;
+    }
+    push("24-byte burst", default, None, &burst, rs_len(&burst));
+    let mut obliterated = fec.encode(&pattern(803, 2 * RS_BLOCK));
+    let half = obliterated.len() / 2;
+    for byte in obliterated.iter_mut().take(half) {
+        *byte ^= 0xff;
+    }
+    push(
+        "first half obliterated",
+        default,
+        None,
+        &obliterated,
+        rs_len(&obliterated),
+    );
+    push("empty payload", default, Some(&[]), &fec.encode(&[]), 0);
+    push(
+        "body of 100 info bytes",
+        default,
+        None,
+        &pattern(804, 202),
+        100,
+    );
+    push("5-byte junk", default, None, &pattern(805, 5), 0);
+    push("pre_len 10", default, None, &clean, 10);
+    push(
+        "random 512-byte body",
+        default,
+        None,
+        &pattern(806, 512),
+        RS_DATA,
+    );
+    let shallow_data = pattern(807, 300);
+    let shallow = stack(1, None).encode(&shallow_data);
+    push(
+        "depth 1",
+        (1, None),
+        Some(&shallow_data),
+        &shallow,
+        2 * RS_DATA,
+    );
+    let deep = (RS_INTERLEAVE_MAX, Some(seed.as_slice()));
+    let deep_data = pattern(808, 2000);
+    let deep_clean = stack(deep.0, deep.1).encode(&deep_data);
+    push(
+        "depth 16 with CSPRNG",
+        deep,
+        Some(&deep_data),
+        &deep_clean,
+        9 * RS_DATA,
+    );
+    let mut deep_noisy = deep_clean.clone();
+    flip_bits(&mut deep_noisy, 0..deep_clean.len(), 40, 809);
+    push(
+        "depth 16 with CSPRNG, 40 bit errors",
+        deep,
+        None,
+        &deep_noisy,
+        9 * RS_DATA,
+    );
+    let mid = (3, Some(seed.as_slice()));
+    let mut mid_burst = stack(mid.0, mid.1).encode(&pattern(810, 1000));
+    for byte in mid_burst.iter_mut().skip(500).take(30) {
+        *byte ^= 0x5a;
+    }
+    push(
+        "depth 3 with CSPRNG, 30-byte burst",
+        mid,
+        None,
+        &mid_burst,
+        5 * RS_DATA,
+    );
+    cases
+}
+
 /// Prints the full FEC fixture document.
 pub fn fec_fixtures() -> ExitCode {
     let document = json!({
@@ -437,6 +571,7 @@ pub fn fec_fixtures() -> ExitCode {
         "viterbi_encode": viterbi_encode(),
         "viterbi_decode": viterbi_decode(),
         "viterbi_only": viterbi_only(),
+        "concatenated": concatenated(),
     });
     println!(
         "{}",
