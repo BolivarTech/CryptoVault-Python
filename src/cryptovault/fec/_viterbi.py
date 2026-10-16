@@ -63,3 +63,68 @@ def encode(data: bytes) -> bytes:
         state = _NEXT[state][0]
     out += (tail << 4).to_bytes(2, "big")
     return bytes(out)
+
+
+# Predecessors of each state: both enter with input bit ``state >> 5``, from
+# the even state first. The crate keeps the even one on a metric tie.
+_PREDS: Final = [
+    (
+        (s & 31) << 1,
+        _OUTPUT[(s & 31) << 1][s >> 5],
+        ((s & 31) << 1) | 1,
+        _OUTPUT[((s & 31) << 1) | 1][s >> 5],
+    )
+    for s in range(_STATES)
+]
+# Hamming distance between a received and an expected 2-bit symbol.
+_DISTANCE: Final = [[(r ^ e).bit_count() for e in range(4)] for r in range(4)]
+# Metric of the states the zero start cannot have reached yet.
+_SENTINEL: Final = (1 << 31) - 1
+
+
+def decode(body: bytes) -> bytes:
+    """Hard-decision Viterbi decode of one zero-tailed block.
+
+    ``body`` holds ``2 * n + 2`` bytes for ``n`` info bytes: ``8 * len - 4``
+    coded bits, the last 4 bits being padding the decoder ignores.
+
+    Complexity: O(len(body) * 64) time, O(len(body)) decisions kept.
+
+    Args:
+        body: The coded block; even length of at least 4 (the caller checks).
+
+    Returns:
+        The ``len(body) // 2 - 1`` decoded info bytes.
+    """
+    stages = 4 * len(body) - 2
+    symbols = [(byte >> shift) & 3 for byte in body for shift in (6, 4, 2, 0)]
+    metrics = [0] + [_SENTINEL] * (_STATES - 1)
+    decisions = []
+    for symbol in symbols[:stages]:
+        distance = _DISTANCE[symbol]
+        new = []
+        chosen = 0
+        for state, (from_a, out_a, from_b, out_b) in enumerate(_PREDS):
+            via_a = metrics[from_a] + distance[out_a]
+            via_b = metrics[from_b] + distance[out_b]
+            if via_a <= via_b:
+                new.append(via_a)
+            else:
+                new.append(via_b)
+                chosen |= 1 << state
+        metrics = new
+        decisions.append(chosen)
+    bits = []
+    state = 0
+    for chosen in reversed(decisions):
+        bits.append(state >> 5)
+        from_a, _, from_b, _ = _PREDS[state]
+        state = from_b if (chosen >> state) & 1 else from_a
+    bits.reverse()
+    out = bytearray()
+    for start in range(0, stages - _MEMORY, 8):
+        byte = 0
+        for bit in bits[start : start + 8]:
+            byte = (byte << 1) | bit
+        out.append(byte)
+    return bytes(out)

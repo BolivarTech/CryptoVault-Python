@@ -3,8 +3,17 @@
 # Date: 2026-10-16
 """Viterbi inner code, the crate's ``ViterbiCodec`` and ``ViterbiOnlyFec``."""
 
-from cryptovault.constants import VITERBI_CHUNK
+from typing import Final
+
+from cryptovault.constants import TERMINATION_OVERHEAD, VITERBI_CHUNK
+from cryptovault.error import InvalidInputError
 from cryptovault.fec import _viterbi
+
+_FULL_CHUNK_BODY: Final = 2 * VITERBI_CHUNK + TERMINATION_OVERHEAD
+"""Coded length of a full sub-block."""
+
+_MIN_CHUNK_BODY: Final = 2 + TERMINATION_OVERHEAD
+"""Coded length of the smallest sub-block, one info byte."""
 
 
 class ViterbiCodec:
@@ -32,5 +41,31 @@ class ViterbiCodec:
 
         Returns:
             The recovered Reed-Solomon stream.
+
+        Raises:
+            InvalidInputError: If the length cannot be a chunked coded body.
         """
-        raise NotImplementedError
+        out = bytearray()
+        offset = 0
+        for body_len in _chunk_body_lengths(len(blob_body)):
+            out += _viterbi.decode(blob_body[offset : offset + body_len])
+            offset += body_len
+        return bytes(out)
+
+
+def _chunk_body_lengths(total: int) -> list[int]:
+    """Split a coded body into its sub-block lengths.
+
+    Every sub-block but the last is ``2 * VITERBI_CHUNK + 2`` bytes; the last
+    must be an even length of at least 4.
+
+    Raises:
+        InvalidInputError: If the remainder is not a valid sub-block.
+    """
+    full, rest = divmod(total, _FULL_CHUNK_BODY)
+    bodies = [_FULL_CHUNK_BODY] * full
+    if rest:
+        if rest < _MIN_CHUNK_BODY or rest % 2:
+            raise InvalidInputError("malformed blob")
+        bodies.append(rest)
+    return bodies
