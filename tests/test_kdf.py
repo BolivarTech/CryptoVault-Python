@@ -3,8 +3,26 @@
 # Date: 2026-10-16
 """Key derivation: Argon2id master keys and HKDF sub-keys (CV-05, CV-06)."""
 
+import pytest
+from cryptography.exceptions import UnsupportedAlgorithm
+
+from cryptovault import kdf as kdf_module
+from cryptovault.error import KeyDerivationError
 from cryptovault.kdf import Argon2Kdf, _hkdf_expand, expand_aead_key
 from tests.conftest import load_rust_fixtures
+
+
+def test_argon2id_backend_failure_is_a_key_derivation_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def unsupported(**params: object) -> None:
+        raise UnsupportedAlgorithm("Argon2id is not supported by this OpenSSL")
+
+    monkeypatch.setattr(kdf_module, "Argon2id", unsupported)
+    with pytest.raises(KeyDerivationError) as caught:
+        Argon2Kdf().derive_master(b"pw", bytes(16))
+    assert caught.value.message.startswith("Argon2id derivation failed: ")
+    assert isinstance(caught.value.__cause__, UnsupportedAlgorithm)
 
 
 def test_argon2id_master_key_matches_the_crate_for_every_valid_input() -> None:
