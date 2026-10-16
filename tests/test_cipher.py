@@ -50,3 +50,24 @@ def test_decrypt_rejects_a_flipped_tag_bit_with_the_crate_message() -> None:
         cipher.decrypt(key, nonce, b"aad", bytes(sealed))
     assert str(caught.value) == "Cipher error: AES-256-GCM-SIV authentication failed"
     assert isinstance(caught.value.__cause__, InvalidTag)
+
+
+@pytest.mark.parametrize("operation", ["encrypt", "decrypt"])
+@pytest.mark.parametrize(
+    ("key_len", "nonce_len", "message"),
+    [
+        (31, 12, "AES-256 key must be 32 bytes, got 31"),
+        (33, 12, "AES-256 key must be 32 bytes, got 33"),
+        (0, 12, "AES-256 key must be 32 bytes, got 0"),
+        (32, 11, "nonce must be 12 bytes, got 11"),
+        (32, 16, "nonce must be 12 bytes, got 16"),
+        (16, 16, "AES-256 key must be 32 bytes, got 16"),
+    ],
+)
+def test_wrong_key_or_nonce_length_raises_the_crate_cipher_error(
+    operation: str, key_len: int, nonce_len: int, message: str
+) -> None:
+    method = getattr(Aes256GcmSivCipher(), operation)
+    with pytest.raises(CipherError) as caught:
+        method(bytes(key_len), bytes(nonce_len), b"", bytes(16))
+    assert caught.value.message == message
