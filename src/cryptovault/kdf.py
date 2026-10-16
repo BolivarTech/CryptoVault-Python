@@ -36,3 +36,13 @@ class Argon2Kdf:
             memory_cost=ARGON2_M_KIB,
         )
         return kdf.derive(password)
+
+
+def expand_aead_key(master: bytes) -> bytes:
+    """Expand the AEAD sub-key from a master key."""
+    raise NotImplementedError
+
+
+def _hkdf_expand(master: bytes, info: bytes) -> bytes:
+    """HKDF-SHA256 with no salt."""
+    raise NotImplementedError
