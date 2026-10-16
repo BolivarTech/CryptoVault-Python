@@ -38,7 +38,14 @@ build-backend = "uv_build"
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "scripts", "src"]
-addopts = ["--strict-markers", "--strict-config", "--doctest-modules"]
+addopts = [
+    "--strict-markers",
+    "--strict-config",
+    "--doctest-modules",
+    "-m",
+    "not interop",
+]
+markers = ["interop: needs the Rust toolchain; run with -m interop"]
 xfail_strict = true
 
 [tool.ruff]
@@ -55,6 +62,8 @@ convention = "google"
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101", "D", "PLR0913"]
+# Runs the resolved cargo binary with fixed arguments.
+"tests/test_interop_rust.py" = ["S101", "D", "S603"]
 "scripts/test_*.py" = ["S101", "S603", "S607", "D", "PLR0913"]
 "scripts/check_headers.py" = ["S603", "S607"]
 "interop/*.py" = ["S603", "S607"]
