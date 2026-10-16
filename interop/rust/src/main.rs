@@ -71,6 +71,40 @@ fn adversarial(vault: &CryptoVault) -> Vec<Value> {
     for (label, other) in &keys {
         cases.push(decrypt_case(vault, "key", label, other, &base));
     }
+    // Group "structure", read by
+    // test_truncated_padded_and_relabelled_blobs_behave_as_in_the_crate.
+    for len in 0..decoded.len() {
+        let label = format!("truncate to {len} bytes");
+        let blob = STANDARD.encode(&decoded[..len]);
+        cases.push(decrypt_case(vault, "structure", &label, &key, &blob));
+    }
+    for extra in [&[0x00u8][..], &[0xff; 7][..]] {
+        let mut bytes = decoded.clone();
+        bytes.extend_from_slice(extra);
+        let label = format!("append {} trailing bytes", extra.len());
+        let blob = STANDARD.encode(bytes);
+        cases.push(decrypt_case(vault, "structure", &label, &key, &blob));
+    }
+    for version in [0x00u8, 0x02, 0xff] {
+        let mut bytes = decoded.clone();
+        bytes[0] = version;
+        let label = format!("version byte {version:#04x}");
+        let blob = STANDARD.encode(bytes);
+        cases.push(decrypt_case(vault, "structure", &label, &key, &blob));
+    }
+    let declared = [
+        ("declared length 1", 1u32),
+        ("declared length 3", 3),
+        ("declared length MAX_PLAINTEXT_LEN", MAX_PLAINTEXT_LEN as u32),
+        ("declared length MAX_PLAINTEXT_LEN + 1", MAX_PLAINTEXT_LEN as u32 + 1),
+        ("declared length u32::MAX", u32::MAX),
+    ];
+    for (label, len) in declared {
+        let mut bytes = decoded.clone();
+        bytes[1..HEADER_LEN].copy_from_slice(&len.to_le_bytes());
+        let blob = STANDARD.encode(bytes);
+        cases.push(decrypt_case(vault, "structure", label, &key, &blob));
+    }
     // Group "utf8", read by test_non_utf8_plaintext_reports_the_crate_utf8_error.
     let invalid_utf8: [(&str, &[u8]); 9] = [
         ("lone continuation byte", &[0x80]),

@@ -69,3 +69,8 @@ def test_master_key_must_be_exactly_32_bytes_as_in_the_crate() -> None:
 
 def test_non_utf8_plaintext_reports_the_crate_utf8_error() -> None:
     assert adversarial_mismatches("utf8", 9) == []
+
+
+def test_truncated_padded_and_relabelled_blobs_behave_as_in_the_crate() -> None:
+    # 35 truncations, 2 appended tails (ignored, CV-Q6), 3 versions, 5 lengths.
+    assert adversarial_mismatches("structure", 35 + 2 + 3 + 5) == []
