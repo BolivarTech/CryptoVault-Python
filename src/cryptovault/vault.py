@@ -71,7 +71,22 @@ class CryptoVault:
 
     def wrap_key(self, kek: bytes, salt: bytes, key_material: bytes) -> str:
         """Wrap key material."""
-        raise NotImplementedError
+        return self._encrypt_bytes(kek, key_material, _AAD_PURPOSE_ENVELOPE, salt)
+
+    def _encrypt_bytes(
+        self, key: bytes, data: bytes, purpose: int, aad_extra: bytes
+    ) -> str:
+        """Seal bytes as a blob of either purpose, checking key and size first."""
+        if len(key) != KEY_LEN:
+            raise InvalidInputError(f"master key must be exactly {KEY_LEN} bytes")
+        if len(data) > MAX_PLAINTEXT_LEN:
+            raise InvalidInputError("plaintext exceeds maximum size")
+        header = bytes([BLOB_VERSION]) + struct.pack("<I", len(data))
+        aad = bytes([purpose]) + header + aad_extra
+        nonce = sample_nonce()
+        sealed = self._cipher.encrypt(expand_aead_key(key), nonce, aad, data)
+        blob = self._fec.encode(header + nonce + sealed)
+        return base64.b64encode(blob).decode("ascii")
 
     def unwrap_key(self, kek: bytes, salt: bytes, wrapped: str) -> bytes:
         """Unwrap key material."""
