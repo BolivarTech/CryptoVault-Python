@@ -6,10 +6,11 @@
 import struct
 from collections.abc import Callable, Iterator
 
+from cryptography.exceptions import UnsupportedAlgorithm
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms
 
 from cryptovault.constants import KEY_LEN, NONCE_LEN, RS_BLOCK, RS_INTERLEAVE_MAX
-from cryptovault.error import InvalidInputError
+from cryptovault.error import ErrorCorrectionError, InvalidInputError
 
 
 def _permute_windows(
@@ -172,11 +173,17 @@ class CsprngLayer:
         """Yield little-endian u32 words of the window's ChaCha20 keystream.
 
         Words are produced ``batch`` at a time; the stream never ends.
+
+        Raises:
+            ErrorCorrectionError: If the backend has no ChaCha20.
         """
         nonce = window_index.to_bytes(8, "little") + bytes(NONCE_LEN - 8)
-        keystream = Cipher(
-            algorithms.ChaCha20(self._seed, bytes(4) + nonce), mode=None
-        ).encryptor()
+        try:
+            keystream = Cipher(
+                algorithms.ChaCha20(self._seed, bytes(4) + nonce), mode=None
+            ).encryptor()
+        except UnsupportedAlgorithm as exc:
+            raise ErrorCorrectionError(f"ChaCha20 is unavailable: {exc}") from exc
         while True:
             for (word,) in struct.iter_unpack("<I", keystream.update(bytes(4 * batch))):
                 yield word
