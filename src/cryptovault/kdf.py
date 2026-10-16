@@ -5,11 +5,13 @@
 
 from typing import Final
 
+from cryptography.exceptions import UnsupportedAlgorithm
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.argon2 import Argon2id
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
 from cryptovault.constants import ARGON2_M_KIB, ARGON2_P, ARGON2_T, KEY_LEN
+from cryptovault.error import KeyDerivationError
 
 _HKDF_INFO_AEAD: Final = b"cryptovault:v1:aead"
 """HKDF ``info`` label of the AEAD sub-key."""
@@ -34,15 +36,22 @@ class Argon2Kdf:
 
         Returns:
             The 32-byte master key.
+
+        Raises:
+            KeyDerivationError: If the backend rejects the parameters or does
+                not support Argon2id (OpenSSL older than 3.2).
         """
-        kdf = Argon2id(
-            salt=salt,
-            length=KEY_LEN,
-            iterations=ARGON2_T,
-            lanes=ARGON2_P,
-            memory_cost=ARGON2_M_KIB,
-        )
-        return kdf.derive(password)
+        try:
+            kdf = Argon2id(
+                salt=salt,
+                length=KEY_LEN,
+                iterations=ARGON2_T,
+                lanes=ARGON2_P,
+                memory_cost=ARGON2_M_KIB,
+            )
+            return kdf.derive(password)
+        except (UnsupportedAlgorithm, ValueError) as exc:
+            raise KeyDerivationError(f"Argon2id derivation failed: {exc}") from exc
 
 
 def expand_aead_key(master: bytes) -> bytes:
