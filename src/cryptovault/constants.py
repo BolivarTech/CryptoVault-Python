@@ -43,11 +43,23 @@ ARGON2_T: Final = 3
 ARGON2_P: Final = 4
 """Argon2id parallelism (lanes)."""
 
-# Parameters of the crate's FEC stack that enter the size limits below.
-_RS_DATA: Final = 223
-_RS_BLOCK: Final = 255
-_VITERBI_CHUNK: Final = 490 * _RS_BLOCK
-_TERMINATION_OVERHEAD: Final = 2
+RS_DATA: Final = 223
+"""Reed-Solomon data bytes per codeword."""
+
+RS_PARITY: Final = 32
+"""Reed-Solomon parity bytes per codeword."""
+
+RS_BLOCK: Final = RS_DATA + RS_PARITY
+"""Reed-Solomon codeword length, in bytes (255)."""
+
+RS_INTERLEAVE_MAX: Final = 16
+"""Largest interleave depth: codewords per interleaver window."""
+
+VITERBI_CHUNK: Final = 490 * RS_BLOCK
+"""Reed-Solomon stream bytes per Viterbi sub-block (124 950)."""
+
+TERMINATION_OVERHEAD: Final = 2
+"""Bytes the Viterbi zero tail adds to each sub-block (``2L + 2``)."""
 
 
 def _max_blob_len() -> int:
@@ -61,9 +73,9 @@ def _max_blob_len() -> int:
         The largest decoded blob length accepted, in bytes.
     """
     protected_max = MAX_PLAINTEXT_LEN + HEADER_LEN + NONCE_LEN + TAG_LEN
-    rs_max = -(-protected_max // _RS_DATA) * _RS_BLOCK
-    viterbi_chunks = -(-rs_max // _VITERBI_CHUNK)
-    return rs_max * 2 + _TERMINATION_OVERHEAD * viterbi_chunks
+    rs_max = -(-protected_max // RS_DATA) * RS_BLOCK
+    viterbi_chunks = -(-rs_max // VITERBI_CHUNK)
+    return rs_max * 2 + TERMINATION_OVERHEAD * viterbi_chunks
 
 
 MAX_BLOB_LEN: Final = _max_blob_len()
