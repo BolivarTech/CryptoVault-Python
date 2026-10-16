@@ -26,6 +26,6 @@ PUBLIC_NAMES = {
 
 
 def test_root_exports_the_vault_strategies_errors_and_utilities() -> None:
-    assert PUBLIC_NAMES <= set(cryptovault.__all__)
+    assert set(cryptovault.__all__) >= PUBLIC_NAMES
     for name in PUBLIC_NAMES:
         assert getattr(cryptovault, name) is not None
