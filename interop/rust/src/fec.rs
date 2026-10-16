@@ -18,8 +18,8 @@ use cryptovault::fec::{
 use cryptovault::kdf::Argon2Kdf;
 use cryptovault::{CryptoVault, NoFec};
 use cryptovault::{
-    HEADER_LEN, KEY_LEN, MAX_BLOB_LEN, MAX_PLAINTEXT_LEN, RS_BLOCK, RS_DATA, RS_INTERLEAVE_MAX,
-    RS_PARITY, SALT_LEN, TERMINATION_OVERHEAD, VITERBI_CHUNK,
+    HEADER_LEN, KEY_LEN, MAX_BLOB_LEN, MAX_PLAINTEXT_LEN, RECOMMENDED_MAX_PAYLOAD, RS_BLOCK,
+    RS_DATA, RS_INTERLEAVE_MAX, RS_PARITY, SALT_LEN, TERMINATION_OVERHEAD, VITERBI_CHUNK,
 };
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -874,6 +874,17 @@ fn vault_adversarial() -> Vec<Value> {
     rows
 }
 
+/// A `RECOMMENDED_MAX_PAYLOAD` data blob from `CryptoVault::default`; read by
+/// `test_crate_default_blob_of_the_recommended_size_opens`.
+fn vault_large() -> Value {
+    let key = pattern(1100, KEY_LEN);
+    let plaintext = "0123456789abcdef".repeat(RECOMMENDED_MAX_PAYLOAD / 16);
+    let blob = CryptoVault::default()
+        .encrypt_with_key(&key, &plaintext)
+        .expect("encrypt");
+    json!({ "key": hex::encode(&key), "plaintext": plaintext, "blob": blob })
+}
+
 /// Prints the full FEC fixture document.
 pub fn fec_fixtures() -> ExitCode {
     let document = json!({
@@ -900,6 +911,7 @@ pub fn fec_fixtures() -> ExitCode {
         "concatenated_from_master": concatenated_from_master(),
         "vault_blobs": vault_blobs(),
         "vault_adversarial": vault_adversarial(),
+        "vault_large": vault_large(),
     });
     println!(
         "{}",

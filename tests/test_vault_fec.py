@@ -5,7 +5,13 @@
 
 from typing import Any
 
-from cryptovault import Aes256GcmSivCipher, Argon2Kdf, CryptoVault, CryptoVaultError
+from cryptovault import (
+    RECOMMENDED_MAX_PAYLOAD,
+    Aes256GcmSivCipher,
+    Argon2Kdf,
+    CryptoVault,
+    CryptoVaultError,
+)
 from cryptovault.fec import (
     ConcatenatedFec,
     ErrorCorrection,
@@ -82,3 +88,10 @@ def test_adversarial_fec_blobs_behave_as_in_the_crate() -> None:
         except CryptoVaultError as error:
             got = {"error": str(error)}
         assert got == row["expect"], f"{row['fec']['name']}: {row['label']}"
+
+
+def test_crate_default_blob_of_the_recommended_size_opens() -> None:
+    row = load_rust_fec_fixtures()["vault_large"]
+    assert len(row["plaintext"].encode("utf-8")) == RECOMMENDED_MAX_PAYLOAD
+    got = CryptoVault.default().decrypt_with_key(bytes.fromhex(row["key"]), row["blob"])
+    assert got == row["plaintext"]
