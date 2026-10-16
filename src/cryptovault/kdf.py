@@ -16,6 +16,9 @@ from cryptovault.error import KeyDerivationError
 _HKDF_INFO_AEAD: Final = b"cryptovault:v1:aead"
 """HKDF ``info`` label of the AEAD sub-key."""
 
+_HKDF_INFO_INTERLEAVER: Final = b"cryptovault:v1:interleaver"
+"""HKDF ``info`` label of the CSPRNG interleaver seed."""
+
 
 class KeyDerivation(Protocol):
     """Master-key derivation strategy, the crate's ``KeyDerivation`` trait."""
@@ -91,13 +94,16 @@ def expand_aead_key(master: bytes) -> bytes:
 def expand_interleaver_seed(master: bytes) -> bytes:
     """Expand the CSPRNG interleaver seed from a master key.
 
+    ``HKDF-SHA256(salt = none, ikm = master, info = "cryptovault:v1:interleaver")``,
+    a sub-key separate from the AEAD key.
+
     Args:
         master: The 32-byte master key.
 
     Returns:
         The 32-byte interleaver seed.
     """
-    raise NotImplementedError
+    return _hkdf_expand(master, _HKDF_INFO_INTERLEAVER)
 
 
 def _hkdf_expand(master: bytes, info: bytes) -> bytes:
