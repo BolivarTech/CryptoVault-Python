@@ -293,6 +293,83 @@ fn viterbi_encode() -> Vec<Value> {
     .collect()
 }
 
+/// Flips `count` distinct pseudo-random bits of `bytes` within `range`.
+fn flip_bits(bytes: &mut [u8], range: std::ops::Range<usize>, count: usize, seed: u32) {
+    let span = (range.end - range.start) * 8;
+    let noise = pattern(seed, 4 * count);
+    let mut used = Vec::new();
+    for chunk in noise.chunks(4) {
+        let draw = u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]) as usize;
+        let mut bit = draw % span;
+        while used.contains(&bit) {
+            bit = (bit + 1) % span;
+        }
+        used.push(bit);
+        bytes[range.start + bit / 8] ^= 0x80 >> (bit % 8);
+    }
+}
+
+/// Records the crate's answer to `ViterbiCodec::decode(body)`, digesting the
+/// output so wrong-but-decoded streams are pinned without bloating the file.
+fn viterbi_decode_case(label: &str, body: &[u8]) -> Value {
+    let expect = match ViterbiCodec.decode(body) {
+        Ok(decoded) => json!({ "ok_len": decoded.len(), "ok_sha256": sha256_hex(&decoded) }),
+        Err(error) => json!({ "error": error.to_string() }),
+    };
+    json!({ "label": label, "body": hex::encode(body), "expect": expect })
+}
+
+/// Viterbi decode outcomes: clean, sparse to dense bit errors, bursts, junk,
+/// padding bits, malformed lengths and a corrupted second sub-block; read by
+/// `test_viterbi_decode_recovers_and_miscorrects_exactly_as_the_crate`.
+fn viterbi_decode() -> Vec<Value> {
+    let mut cases = Vec::new();
+    let clean = ViterbiCodec.encode(&pattern(91, RS_BLOCK));
+    cases.push(viterbi_decode_case("clean codeword stream", &clean));
+    for (i, flips) in [1usize, 2, 5, 10, 20, 40, 80, 160, 400, 1000]
+        .iter()
+        .enumerate()
+    {
+        let mut body = clean.clone();
+        flip_bits(&mut body, 0..clean.len(), *flips, 200 + i as u32);
+        cases.push(viterbi_decode_case(&format!("{flips} bit errors"), &body));
+    }
+    let mut burst = clean.clone();
+    for byte in burst.iter_mut().skip(200).take(16) {
+        *byte ^= 0xff;
+    }
+    cases.push(viterbi_decode_case("16-byte burst", &burst));
+    let mut padding = clean.clone();
+    *padding.last_mut().expect("non-empty") ^= 0x0f;
+    cases.push(viterbi_decode_case("padding bits flipped", &padding));
+    cases.push(viterbi_decode_case(
+        "random body",
+        &pattern(92, clean.len()),
+    ));
+    cases.push(viterbi_decode_case(
+        "all-zero body",
+        &vec![0x00; clean.len()],
+    ));
+    cases.push(viterbi_decode_case(
+        "all-ones body",
+        &vec![0xff; clean.len()],
+    ));
+    for len in [0usize, 2, 3, 4, 5, 6, 7, 512] {
+        let label = format!("{len}-byte junk body");
+        cases.push(viterbi_decode_case(&label, &pattern(93 + len as u32, len)));
+    }
+    let long = ViterbiCodec.encode(&pattern(94, VITERBI_CHUNK + RS_BLOCK));
+    let full = 2 * VITERBI_CHUNK + TERMINATION_OVERHEAD;
+    let mut second = long.clone();
+    flip_bits(&mut second, full..long.len(), 3, 95);
+    cases.push(viterbi_decode_case("3 bit errors in sub-block 2", &second));
+    cases.push(viterbi_decode_case(
+        "full sub-block plus 2 bytes",
+        &long[..full + 2],
+    ));
+    cases
+}
+
 /// Prints the full FEC fixture document.
 pub fn fec_fixtures() -> ExitCode {
     let document = json!({
@@ -311,6 +388,7 @@ pub fn fec_fixtures() -> ExitCode {
         "csprng_seed": csprng_seed(),
         "interleaver": interleaver(),
         "viterbi_encode": viterbi_encode(),
+        "viterbi_decode": viterbi_decode(),
     });
     println!(
         "{}",

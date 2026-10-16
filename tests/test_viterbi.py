@@ -5,6 +5,7 @@
 
 import hashlib
 
+from cryptovault.error import CryptoVaultError
 from cryptovault.fec import ViterbiCodec
 from tests.conftest import load_rust_fec_fixtures
 
@@ -18,3 +19,20 @@ def test_viterbi_encode_matches_the_crate_including_chunking() -> None:
         encoded = codec.encode(stream)
         assert len(encoded) == case["encoded_len"]
         assert hashlib.sha256(encoded).hexdigest() == case["encoded_sha256"]
+
+
+def test_viterbi_decode_recovers_and_miscorrects_exactly_as_the_crate() -> None:
+    cases = load_rust_fec_fixtures()["viterbi_decode"]
+    assert len(cases) == 26
+    codec = ViterbiCodec()
+    for case in cases:
+        try:
+            decoded = codec.decode(bytes.fromhex(case["body"]))
+        except CryptoVaultError as error:
+            got: dict[str, object] = {"error": str(error)}
+        else:
+            got = {
+                "ok_len": len(decoded),
+                "ok_sha256": hashlib.sha256(decoded).hexdigest(),
+            }
+        assert got == case["expect"], case["label"]

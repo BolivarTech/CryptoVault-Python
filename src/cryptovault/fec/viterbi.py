@@ -23,3 +23,14 @@ class ViterbiCodec:
             _viterbi.encode(rs_stream[start : start + VITERBI_CHUNK])
             for start in range(0, len(rs_stream), VITERBI_CHUNK)
         )
+
+    def decode(self, blob_body: bytes) -> bytes:
+        """Decode ``blob_body``, inverting :meth:`encode`.
+
+        Args:
+            blob_body: The received coded stream.
+
+        Returns:
+            The recovered Reed-Solomon stream.
+        """
+        raise NotImplementedError
