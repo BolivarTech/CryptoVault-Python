@@ -13,6 +13,9 @@ from typing import Protocol
 
 from cryptovault.constants import MAX_BLOB_LEN
 from cryptovault.error import InvalidInputError
+from cryptovault.fec.rs import ReedSolomonCodec
+
+__all__ = ["ErrorCorrection", "NoFec", "ReedSolomonCodec"]
 
 
 class ErrorCorrection(Protocol):
