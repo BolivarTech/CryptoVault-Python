@@ -77,3 +77,39 @@ class BlockInterleaver:
             for k, dst in enumerate(self._window_perm(filled)):
                 out[base + dst] = stream[base + k]
         return bytes(out)
+
+
+class CsprngLayer:
+    """Optional keyed shuffle applied after the block interleaver.
+
+    Args:
+        seed: The interleaver seed.
+    """
+
+    def __init__(self, seed: bytes) -> None:
+        """Store the seed."""
+        self._seed = seed
+
+    def interleave(self, stream: bytes, window_len: int) -> bytes:
+        """Shuffle each window of ``stream``.
+
+        Args:
+            stream: The block-interleaved stream.
+            window_len: The block interleaver's window span.
+
+        Returns:
+            The shuffled stream.
+        """
+        raise NotImplementedError
+
+    def deinterleave(self, stream: bytes, window_len: int) -> bytes:
+        """Undo :meth:`interleave`.
+
+        Args:
+            stream: A shuffled stream.
+            window_len: The block interleaver's window span.
+
+        Returns:
+            The block-interleaved stream.
+        """
+        raise NotImplementedError

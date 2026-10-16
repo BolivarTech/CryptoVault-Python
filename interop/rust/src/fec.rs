@@ -8,9 +8,9 @@
 
 use std::process::ExitCode;
 
-use cryptovault::fec::{BlockInterleaver, ErrorCorrection, ReedSolomonCodec};
+use cryptovault::fec::{BlockInterleaver, CsprngLayer, ErrorCorrection, ReedSolomonCodec};
 use cryptovault::{
-    MAX_BLOB_LEN, RS_BLOCK, RS_DATA, RS_INTERLEAVE_MAX, RS_PARITY, TERMINATION_OVERHEAD,
+    KEY_LEN, MAX_BLOB_LEN, RS_BLOCK, RS_DATA, RS_INTERLEAVE_MAX, RS_PARITY, TERMINATION_OVERHEAD,
     VITERBI_CHUNK,
 };
 use serde_json::{json, Value};
@@ -176,6 +176,42 @@ fn interleaver_depth() -> Vec<Value> {
         .collect()
 }
 
+/// CSPRNG-layer shuffles over several seeds, windows and stream lengths, the
+/// crate's own golden case first; read by
+/// `test_csprng_layer_shuffles_as_the_crate_and_inverts`.
+fn csprng_interleave() -> Vec<Value> {
+    let (seed_a, seed_b) = (pattern(71, KEY_LEN), pattern(72, KEY_LEN));
+    let ramp: Vec<u8> = (0..RS_BLOCK).map(|i| i as u8).collect();
+    let window = 5 * RS_BLOCK;
+    let wide = RS_INTERLEAVE_MAX * RS_BLOCK;
+    let inputs: [(Vec<u8>, usize, Vec<u8>); 12] = [
+        (vec![0x42; KEY_LEN], RS_BLOCK, ramp),
+        (vec![0x11; KEY_LEN], window, pattern(1, window + 137)),
+        (vec![0x2a; KEY_LEN], window, pattern(2, window)),
+        (seed_a.clone(), window, Vec::new()),
+        (seed_a.clone(), window, pattern(3, 1)),
+        (seed_a.clone(), window, pattern(4, 2)),
+        (seed_a.clone(), RS_BLOCK, pattern(5, 100)),
+        (seed_a, wide, pattern(6, 2 * wide + 37)),
+        (seed_b.clone(), 2 * RS_BLOCK, pattern(7, 6 * RS_BLOCK)),
+        (seed_b, window, pattern(8, 5 * window + 1)),
+        (vec![0x00; KEY_LEN], window, pattern(9, window)),
+        (vec![0xff; KEY_LEN], RS_BLOCK, pattern(10, 5 * RS_BLOCK - 1)),
+    ];
+    inputs
+        .iter()
+        .map(|(seed, window_len, stream)| {
+            let layer = CsprngLayer::new(seed).expect("32-byte seed");
+            json!({
+                "seed": hex::encode(seed),
+                "window_len": window_len,
+                "stream": hex::encode(stream),
+                "interleaved": hex::encode(layer.interleave(stream, *window_len)),
+            })
+        })
+        .collect()
+}
+
 /// Prints the full FEC fixture document.
 pub fn fec_fixtures() -> ExitCode {
     let document = json!({
@@ -190,6 +226,7 @@ pub fn fec_fixtures() -> ExitCode {
         "rs_validate": rs_validate(),
         "block_interleave": block_interleave(),
         "interleaver_depth": interleaver_depth(),
+        "csprng_interleave": csprng_interleave(),
     });
     println!(
         "{}",

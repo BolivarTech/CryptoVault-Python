@@ -4,7 +4,7 @@
 """The interleavers permute bytes exactly as the crate's do."""
 
 from cryptovault.error import CryptoVaultError
-from cryptovault.fec import BlockInterleaver
+from cryptovault.fec import BlockInterleaver, CsprngLayer
 from tests.conftest import load_rust_fec_fixtures
 
 
@@ -27,3 +27,14 @@ def test_block_interleaver_accepts_only_the_crate_depth_range() -> None:
         except CryptoVaultError as error:
             got = {"error": str(error)}
         assert got == case["expect"]
+
+
+def test_csprng_layer_shuffles_as_the_crate_and_inverts() -> None:
+    cases = load_rust_fec_fixtures()["csprng_interleave"]
+    assert len(cases) == 12
+    for case in cases:
+        layer = CsprngLayer(bytes.fromhex(case["seed"]))
+        stream = bytes.fromhex(case["stream"])
+        window = case["window_len"]
+        assert layer.interleave(stream, window).hex() == case["interleaved"]
+        assert layer.deinterleave(bytes.fromhex(case["interleaved"]), window) == stream

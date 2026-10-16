@@ -13,10 +13,16 @@ from typing import Protocol
 
 from cryptovault.constants import MAX_BLOB_LEN
 from cryptovault.error import InvalidInputError
-from cryptovault.fec.interleaver import BlockInterleaver
+from cryptovault.fec.interleaver import BlockInterleaver, CsprngLayer
 from cryptovault.fec.rs import ReedSolomonCodec
 
-__all__ = ["BlockInterleaver", "ErrorCorrection", "NoFec", "ReedSolomonCodec"]
+__all__ = [
+    "BlockInterleaver",
+    "CsprngLayer",
+    "ErrorCorrection",
+    "NoFec",
+    "ReedSolomonCodec",
+]
 
 
 class ErrorCorrection(Protocol):
