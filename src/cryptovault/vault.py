@@ -5,6 +5,7 @@
 
 import base64
 import binascii
+import hmac
 import os
 import struct
 
@@ -38,6 +39,11 @@ def _random_bytes(count: int) -> bytes:
 def generate_salt() -> bytes:
     """Generate a per-context salt."""
     return _random_bytes(SALT_LEN)
+
+
+def constant_time_eq(a: bytes, b: bytes) -> bool:
+    """Compare two byte strings without a timing side channel."""
+    return hmac.compare_digest(a, b)
 
 
 def generate_dek() -> bytes:
