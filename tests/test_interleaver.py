@@ -38,3 +38,16 @@ def test_csprng_layer_shuffles_as_the_crate_and_inverts() -> None:
         window = case["window_len"]
         assert layer.interleave(stream, window).hex() == case["interleaved"]
         assert layer.deinterleave(bytes.fromhex(case["interleaved"]), window) == stream
+
+
+def test_csprng_layer_accepts_only_a_32_byte_seed_as_the_crate() -> None:
+    cases = load_rust_fec_fixtures()["csprng_seed"]
+    assert [case["seed_len"] for case in cases] == [0, 31, 32, 33]
+    for case in cases:
+        try:
+            CsprngLayer(bytes(case["seed_len"]))
+        except CryptoVaultError as error:
+            got: dict[str, object] = {"error": str(error)}
+        else:
+            got = {"ok": None}
+        assert got == case["expect"]

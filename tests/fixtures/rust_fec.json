@@ -204,6 +204,32 @@
       "window_len": 255
     }
   ],
+  "csprng_seed": [
+    {
+      "expect": {
+        "error": "Invalid input: interleaver seed must be exactly 32 bytes"
+      },
+      "seed_len": 0
+    },
+    {
+      "expect": {
+        "error": "Invalid input: interleaver seed must be exactly 32 bytes"
+      },
+      "seed_len": 31
+    },
+    {
+      "expect": {
+        "ok": null
+      },
+      "seed_len": 32
+    },
+    {
+      "expect": {
+        "error": "Invalid input: interleaver seed must be exactly 32 bytes"
+      },
+      "seed_len": 33
+    }
+  ],
   "interleaver_depth": [
     {
       "depth": 0,

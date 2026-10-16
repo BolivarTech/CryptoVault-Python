@@ -212,6 +212,21 @@ fn csprng_interleave() -> Vec<Value> {
         .collect()
 }
 
+/// `CsprngLayer::new` outcomes around the 32-byte seed length; read by
+/// `test_csprng_layer_accepts_only_a_32_byte_seed_as_the_crate`.
+fn csprng_seed() -> Vec<Value> {
+    [0usize, KEY_LEN - 1, KEY_LEN, KEY_LEN + 1]
+        .iter()
+        .map(|&len| {
+            let expect = match CsprngLayer::new(&vec![0u8; len]) {
+                Ok(_) => json!({ "ok": null }),
+                Err(error) => json!({ "error": error.to_string() }),
+            };
+            json!({ "seed_len": len, "expect": expect })
+        })
+        .collect()
+}
+
 /// Prints the full FEC fixture document.
 pub fn fec_fixtures() -> ExitCode {
     let document = json!({
@@ -227,6 +242,7 @@ pub fn fec_fixtures() -> ExitCode {
         "block_interleave": block_interleave(),
         "interleaver_depth": interleaver_depth(),
         "csprng_interleave": csprng_interleave(),
+        "csprng_seed": csprng_seed(),
     });
     println!(
         "{}",
