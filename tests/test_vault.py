@@ -57,3 +57,7 @@ def adversarial_mismatches(group: str, expected_count: int) -> list[object]:
 def test_every_single_bit_flip_fails_exactly_as_in_the_crate() -> None:
     # "hi" makes a 35-byte blob: header 5, nonce 12, ciphertext 2, tag 16.
     assert adversarial_mismatches("bit flip", 35 * 8) == []
+
+
+def test_only_canonical_padded_base64_is_accepted_as_in_the_crate() -> None:
+    assert adversarial_mismatches("encoding", 14) == []

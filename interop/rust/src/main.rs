@@ -36,7 +36,38 @@ fn adversarial(vault: &CryptoVault) -> Vec<Value> {
             cases.push(decrypt_case(vault, "bit flip", &label, &key, &blob));
         }
     }
+    let short = STANDARD.encode(&decoded[..decoded.len() - 1]);
+    let encodings = [
+        ("empty string", String::new()),
+        ("padding removed", base.trim_end_matches('=').to_string()),
+        ("extra padding", format!("{base}=")),
+        ("padding only", "====".to_string()),
+        ("trailing newline", format!("{base}\n")),
+        ("leading space", format!(" {base}")),
+        ("inner space", format!("{} {}", &base[..8], &base[8..])),
+        ("url-safe dash", format!("-{}", &base[1..])),
+        ("url-safe underscore", format!("_{}", &base[1..])),
+        ("non-ascii character", format!("{base}\u{e9}")),
+        ("length not a multiple of four", base[..base.len() - 2].to_string()),
+        ("non-canonical trailing bits, one pad", non_canonical(&base)),
+        ("non-canonical trailing bits, two pads", non_canonical(&short)),
+        ("canonical two pads", short.clone()),
+    ];
+    for (label, blob) in &encodings {
+        cases.push(decrypt_case(vault, "encoding", label, &key, blob));
+    }
     cases
+}
+
+/// Replaces the last base64 character before the padding with its neighbour in
+/// the alphabet, which changes only the trailing bits that carry no data.
+fn non_canonical(b64: &str) -> String {
+    const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut chars = b64.as_bytes().to_vec();
+    let last = chars.iter().rposition(|c| *c != b'=').expect("non-empty base64");
+    let index = ALPHABET.iter().position(|c| *c == chars[last]).expect("alphabet char");
+    chars[last] = ALPHABET[index ^ 1];
+    String::from_utf8(chars).expect("ASCII")
 }
 
 /// Records the crate's answer to `decrypt_with_key(key, blob)` for one case of
