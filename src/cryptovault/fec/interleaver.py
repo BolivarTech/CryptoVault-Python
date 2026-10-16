@@ -4,6 +4,7 @@
 """Interleaving stage of the concatenated FEC, the crate's ``interleaver``."""
 
 import struct
+from collections.abc import Iterator
 
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms
 
@@ -123,23 +124,29 @@ class CsprngLayer:
         perm = list(range(filled))
         if filled <= 1:
             return perm
+        words = self._keystream_words(window_index, filled)
+        for i in range(filled - 1, 0, -1):
+            bound = i + 1
+            limit = (1 << 32) // bound * bound
+            x = next(words)
+            while x >= limit:
+                x = next(words)
+            j = x % bound
+            perm[i], perm[j] = perm[j], perm[i]
+        return perm
+
+    def _keystream_words(self, window_index: int, batch: int) -> Iterator[int]:
+        """Yield little-endian u32 words of the window's ChaCha20 keystream.
+
+        Words are produced ``batch`` at a time; the stream never ends.
+        """
         nonce = window_index.to_bytes(8, "little") + bytes(NONCE_LEN - 8)
         keystream = Cipher(
             algorithms.ChaCha20(self._seed, bytes(4) + nonce), mode=None
         ).encryptor()
-        draws = struct.iter_unpack("<I", keystream.update(bytes(4 * filled)))
-        for i in range(filled - 1, 0, -1):
-            bound = i + 1
-            limit = (1 << 32) // bound * bound
-            while True:
-                (x,) = next(draws, None) or struct.unpack(
-                    "<I", keystream.update(bytes(4))
-                )
-                if x < limit:
-                    break
-            j = x % bound
-            perm[i], perm[j] = perm[j], perm[i]
-        return perm
+        while True:
+            for (word,) in struct.iter_unpack("<I", keystream.update(bytes(4 * batch))):
+                yield word
 
     def deinterleave(self, stream: bytes, window_len: int) -> bytes:
         """Undo :meth:`interleave`.
