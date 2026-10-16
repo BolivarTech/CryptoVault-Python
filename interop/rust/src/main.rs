@@ -7,6 +7,8 @@
 //! the crate itself over a vault built with `NoFec`. The Python test suite reads
 //! it from `tests/fixtures/rust_nofec.json`.
 
+mod fec;
+
 use std::process::ExitCode;
 
 use aes_gcm_siv::aead::{Aead, KeyInit, Payload};
@@ -464,9 +466,12 @@ fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().collect();
     match args.get(1).map(String::as_str) {
         Some("fixtures") => fixtures(),
+        Some("fec-fixtures") => fec::fec_fixtures(),
         Some("verify") if args.len() == 3 => verify(&args[2]),
         _ => {
-            eprintln!("usage: cryptovault-interop fixtures | verify <python-blobs.json>");
+            eprintln!(
+                "usage: cryptovault-interop fixtures | fec-fixtures | verify <python-blobs.json>"
+            );
             ExitCode::from(2)
         }
     }

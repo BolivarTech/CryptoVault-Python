@@ -15,7 +15,9 @@ import json
 import pathlib
 from typing import Any
 
-FIXTURE_PATH = pathlib.Path(__file__).parent / "fixtures" / "rust_nofec.json"
+FIXTURE_DIR = pathlib.Path(__file__).parent / "fixtures"
+FIXTURE_PATH = FIXTURE_DIR / "rust_nofec.json"
+FEC_FIXTURE_PATH = FIXTURE_DIR / "rust_fec.json"
 
 
 @functools.cache
@@ -29,5 +31,20 @@ def load_rust_fixtures() -> dict[str, Any]:
         FileNotFoundError: If the fixture file has not been generated.
     """
     with FIXTURE_PATH.open(encoding="utf-8") as handle:
+        document: dict[str, Any] = json.load(handle)
+    return document
+
+
+@functools.cache
+def load_rust_fec_fixtures() -> dict[str, Any]:
+    """Load the crate-generated FEC reference document, once per test session.
+
+    Returns:
+        The parsed JSON document.
+
+    Raises:
+        FileNotFoundError: If the fixture file has not been generated.
+    """
+    with FEC_FIXTURE_PATH.open(encoding="utf-8") as handle:
         document: dict[str, Any] = json.load(handle)
     return document

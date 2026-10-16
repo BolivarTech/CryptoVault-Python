@@ -1,0 +1,11 @@
+{
+  "constants": {
+    "RS_BLOCK": 255,
+    "RS_DATA": 223,
+    "RS_INTERLEAVE_MAX": 16,
+    "RS_PARITY": 32,
+    "TERMINATION_OVERHEAD": 2,
+    "VITERBI_CHUNK": 124950
+  },
+  "crate": "cryptovault 0.3.0"
+}
