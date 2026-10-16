@@ -79,6 +79,19 @@ def test_truncated_padded_and_relabelled_blobs_behave_as_in_the_crate() -> None:
     assert adversarial_mismatches("structure", 35 + 2 + 3 + 5) == []
 
 
+def test_with_max_blob_len_caps_a_new_vault_as_in_the_crate() -> None:
+    cases = load_rust_fixtures()["max_blob_len"]
+    assert len(cases) == 4
+    original = make_vault()
+    for case in cases:
+        capped = original.with_max_blob_len(case["cap"])
+        assert capped is not original
+        key = bytes.fromhex(case["key"])
+        got = outcome_of(functools.partial(capped.decrypt_with_key, key, case["blob"]))
+        assert got == case["expect"], case["cap"]
+        assert original.decrypt_with_key(key, case["blob"]) == "hi"
+
+
 @pytest.mark.parametrize(
     "blob",
     [

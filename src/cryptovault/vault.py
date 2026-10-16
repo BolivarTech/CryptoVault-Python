@@ -53,6 +53,10 @@ class CryptoVault:
         self._cipher = cipher
         self._fec = fec
 
+    def with_max_blob_len(self, cap: int) -> "CryptoVault":
+        """Return a vault with a lower decoded-blob cap."""
+        raise NotImplementedError
+
     def decrypt_with_key(self, key: bytes, blob: str) -> str:
         """Decrypt a data blob."""
         if len(key) != KEY_LEN:

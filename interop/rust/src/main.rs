@@ -247,6 +247,26 @@ fn data(vault: &CryptoVault) -> Vec<Value> {
         .collect()
 }
 
+/// The crate's answer for a 35-byte blob under several `with_max_blob_len` caps;
+/// read by `test_with_max_blob_len_caps_a_new_vault_as_in_the_crate`.
+fn max_blob_len(vault: &CryptoVault) -> Vec<Value> {
+    let key = counting(0x00, KEY_LEN);
+    let base = vault.encrypt_with_key(&key, "hi").expect("encrypt");
+    let decoded_len = STANDARD.decode(&base).expect("decodes").len();
+    [decoded_len - 1, decoded_len, 0, usize::MAX]
+        .iter()
+        .map(|cap| {
+            let capped = self::vault().with_max_blob_len(*cap);
+            json!({
+                "cap": cap,
+                "key": hex::encode(&key),
+                "blob": base,
+                "expect": outcome(capped.decrypt_with_key(&key, &base), |s| json!(s.as_str())),
+            })
+        })
+        .collect()
+}
+
 /// Prints the full fixture document.
 fn fixtures() -> ExitCode {
     let vault = vault();
@@ -265,6 +285,7 @@ fn fixtures() -> ExitCode {
         "hkdf": hkdf(),
         "data": data(&vault),
         "adversarial": adversarial(&vault),
+        "max_blob_len": max_blob_len(&vault),
     });
     println!("{}", serde_json::to_string_pretty(&document).expect("serializable"));
     ExitCode::SUCCESS
