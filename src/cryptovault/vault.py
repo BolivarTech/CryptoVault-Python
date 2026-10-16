@@ -4,15 +4,44 @@
 """The vault: composes key derivation, AEAD and FEC strategies."""
 
 import base64
+import binascii
 import struct
 
 from cryptovault._blob import decode_blob
 from cryptovault.cipher import Aes256GcmSivCipher
 from cryptovault.constants import NONCE_LEN
+from cryptovault.error import EncodingError
 from cryptovault.fec import NoFec
 from cryptovault.kdf import Argon2Kdf, expand_aead_key
 
 _AAD_PURPOSE_DATA = 0x01
+
+
+def _decode_base64(text: str) -> bytes:
+    """Decode strict, canonical, padded standard base64, as the crate does.
+
+    ``base64.b64decode`` accepts set trailing bits and some extra padding even
+    with ``validate=True``; re-encoding the result and comparing closes both.
+
+    Args:
+        text: The blob as received.
+
+    Returns:
+        The decoded bytes.
+
+    Raises:
+        EncodingError: ``"invalid encoding"`` for any character outside the
+            standard alphabet (whitespace included), missing or extra padding,
+            or trailing bits that are not zero.
+    """
+    try:
+        raw = text.encode("ascii")
+        decoded = base64.b64decode(raw, validate=True)
+    except (UnicodeEncodeError, binascii.Error) as exc:
+        raise EncodingError("invalid encoding") from exc
+    if base64.b64encode(decoded) != raw:
+        raise EncodingError("invalid encoding")
+    return decoded
 
 
 class CryptoVault:
@@ -26,7 +55,7 @@ class CryptoVault:
 
     def decrypt_with_key(self, key: bytes, blob: str) -> str:
         """Decrypt a data blob."""
-        received = base64.b64decode(blob)
+        received = _decode_base64(blob)
         version, plaintext_len, body = decode_blob(self._fec, received)
         header = bytes([version]) + struct.pack("<I", plaintext_len)
         aad = bytes([_AAD_PURPOSE_DATA]) + header
