@@ -97,7 +97,8 @@ class CryptoVault:
         blob: str,
     ) -> str:
         """Move wrapped key material to a new context."""
-        raise NotImplementedError
+        dek = self.unwrap_key(old_kek, old_salt, blob)
+        return self.wrap_key(new_kek, new_salt, dek)
 
     def unwrap_key(self, kek: bytes, salt: bytes, wrapped: str) -> bytes:
         """Unwrap key material."""
