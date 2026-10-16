@@ -37,8 +37,8 @@ requires = ["uv_build>=0.13.0,<0.14"]
 build-backend = "uv_build"
 
 [tool.pytest.ini_options]
-testpaths = ["tests", "scripts"]
-addopts = ["--strict-markers", "--strict-config"]
+testpaths = ["tests", "scripts", "src"]
+addopts = ["--strict-markers", "--strict-config", "--doctest-modules"]
 xfail_strict = true
 
 [tool.ruff]
