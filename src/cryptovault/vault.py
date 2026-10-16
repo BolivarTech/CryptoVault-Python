@@ -16,6 +16,7 @@ from cryptovault.constants import (
     MAX_BLOB_LEN,
     MAX_PLAINTEXT_LEN,
     NONCE_LEN,
+    SALT_LEN,
 )
 from cryptovault.error import EncodingError, InvalidInputError
 from cryptovault.fec import NoFec
@@ -69,7 +70,11 @@ class CryptoVault:
 
     def derive_key(self, password: str, salt: bytes) -> bytes:
         """Derive a master key from a password."""
-        raise NotImplementedError
+        if not password:
+            raise InvalidInputError("password must not be empty")
+        if len(salt) != SALT_LEN:
+            raise InvalidInputError(f"salt must be exactly {SALT_LEN} bytes")
+        return self._kdf.derive_master(password.encode("utf-8"), salt)
 
     def encrypt_with_key(self, key: bytes, plaintext: str) -> str:
         """Encrypt text into a data blob."""
