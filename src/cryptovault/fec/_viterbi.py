@@ -90,6 +90,11 @@ def decode(body: bytes) -> bytes:
 
     Complexity: O(len(body) * 64) time, O(len(body)) decisions kept.
 
+    A block that is an exact codeword (the clean-channel case) is decoded by
+    inverting the encoder and confirmed by re-encoding: its zero-distance path
+    is then the only survivor, so the full trellis would return the same
+    bytes. Any other block runs the full add-compare-select.
+
     Args:
         body: The coded block; even length of at least 4 (the caller checks).
 
@@ -98,6 +103,34 @@ def decode(body: bytes) -> bytes:
     """
     stages = 4 * len(body) - 2
     symbols = [(byte >> shift) & 3 for byte in body for shift in (6, 4, 2, 0)]
+    candidate = _invert(symbols, stages - _MEMORY)
+    coded = encode(candidate)
+    if coded[:-1] == body[:-1] and coded[-1] == body[-1] & 0xF0:
+        return candidate
+    return _trellis_decode(symbols, stages)
+
+
+def _invert(symbols: list[int], info_bits: int) -> bytes:
+    """Read the info bits off the first output of each symbol.
+
+    That output is the input bit XOR a parity of the register state, so the
+    input follows from the symbol and the state reached so far.
+    """
+    out = bytearray()
+    state = 0
+    byte = 0
+    for index in range(info_bits):
+        bit = (symbols[index] >> 1) ^ (_OUTPUT[state][0] >> 1)
+        byte = (byte << 1) | bit
+        state = _NEXT[state][bit]
+        if index % 8 == 7:
+            out.append(byte)
+            byte = 0
+    return bytes(out)
+
+
+def _trellis_decode(symbols: list[int], stages: int) -> bytes:
+    """Full add-compare-select over ``stages`` symbols, traceback from state 0."""
     metrics = [0] + [_SENTINEL] * (_STATES - 1)
     decisions = []
     for symbol in symbols[:stages]:
