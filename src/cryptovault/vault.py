@@ -5,6 +5,7 @@
 
 import base64
 import binascii
+import os
 import struct
 
 from cryptovault._blob import decode_blob
@@ -18,7 +19,7 @@ from cryptovault.constants import (
     NONCE_LEN,
     SALT_LEN,
 )
-from cryptovault.error import EncodingError, InvalidInputError
+from cryptovault.error import EncodingError, InvalidInputError, KeyDerivationError
 from cryptovault.fec import NoFec
 from cryptovault.kdf import Argon2Kdf, expand_aead_key
 
@@ -26,14 +27,22 @@ _AAD_PURPOSE_DATA = 0x01
 _AAD_PURPOSE_ENVELOPE = 0x02
 
 
+def _random_bytes(count: int) -> bytes:
+    """Draw ``count`` bytes from the OS CSPRNG, failing closed."""
+    try:
+        return os.urandom(count)
+    except OSError as exc:
+        raise KeyDerivationError(f"OsRng entropy failure: {exc}") from exc
+
+
 def generate_salt() -> bytes:
     """Generate a per-context salt."""
-    raise NotImplementedError
+    return _random_bytes(SALT_LEN)
 
 
 def generate_dek() -> bytes:
     """Generate a data-encryption key."""
-    raise NotImplementedError
+    return _random_bytes(KEY_LEN)
 
 
 def _decode_base64(text: str) -> bytes:
