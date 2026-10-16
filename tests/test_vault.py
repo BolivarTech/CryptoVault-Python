@@ -185,3 +185,22 @@ def test_every_crate_wrapped_key_unwraps_with_its_kek_and_salt() -> None:
     for case in cases:
         kek, salt = bytes.fromhex(case["kek"]), bytes.fromhex(case["salt"])
         assert vault.unwrap_key(kek, salt, case["blob"]).hex() == case["key_material"]
+
+
+def test_envelope_binds_salt_and_purpose_as_in_the_crate() -> None:
+    cases = [c for c in load_rust_fixtures()["adversarial"] if c["group"] == "envelope"]
+    assert len(cases) == 6
+    vault = make_vault()
+    mismatches = []
+    for case in cases:
+        key = bytes.fromhex(case["key"])
+        call: Callable[[], object]
+        if case["op"] == "unwrap":
+            salt = bytes.fromhex(case["salt"])
+            call = functools.partial(vault.unwrap_key, key, salt, case["blob"])
+        else:
+            call = functools.partial(vault.decrypt_with_key, key, case["blob"])
+        got = outcome_of(call)
+        if got != case["expect"]:
+            mismatches.append((case["label"], got, case["expect"]))
+    assert mismatches == []

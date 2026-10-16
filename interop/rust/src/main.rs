@@ -105,6 +105,29 @@ fn adversarial(vault: &CryptoVault) -> Vec<Value> {
         let blob = STANDARD.encode(bytes);
         cases.push(decrypt_case(vault, "structure", label, &key, &blob));
     }
+    // Group "envelope", read by test_envelope_binds_salt_and_purpose_as_in_the_crate.
+    let salt_a = counting(0x10, SALT_LEN);
+    let salt_b = counting(0x20, SALT_LEN);
+    let wrapped = vault.wrap_key(&key, &salt_a, &counting(0x40, KEY_LEN)).expect("wrap");
+    let unwraps: [(&str, &[u8], &[u8], &str); 5] = [
+        ("envelope with its salt", &key, &salt_a, &wrapped),
+        ("envelope with another salt", &key, &salt_b, &wrapped),
+        ("envelope with an empty salt", &key, &[], &wrapped),
+        ("data opened as envelope", &key, &[], &base),
+        ("envelope key of 31 bytes", &key[..31], &salt_a, &wrapped),
+    ];
+    for (label, kek, salt, blob) in unwraps {
+        cases.push(json!({
+            "group": "envelope",
+            "label": label,
+            "op": "unwrap",
+            "key": hex::encode(kek),
+            "salt": hex::encode(salt),
+            "blob": blob,
+            "expect": outcome(vault.unwrap_key(kek, salt, blob), |k| json!(hex::encode(&*k))),
+        }));
+    }
+    cases.push(decrypt_case(vault, "envelope", "envelope opened as data", &key, &wrapped));
     // Group "utf8", read by test_non_utf8_plaintext_reports_the_crate_utf8_error.
     let invalid_utf8: [(&str, &[u8]); 9] = [
         ("lone continuation byte", &[0x80]),
