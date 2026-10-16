@@ -74,7 +74,11 @@ class CryptoVault:
             raise InvalidInputError("password must not be empty")
         if len(salt) != SALT_LEN:
             raise InvalidInputError(f"salt must be exactly {SALT_LEN} bytes")
-        return self._kdf.derive_master(password.encode("utf-8"), salt)
+        try:
+            encoded = password.encode("utf-8")
+        except UnicodeEncodeError as exc:
+            raise EncodingError("password is not valid UTF-8") from exc
+        return self._kdf.derive_master(encoded, salt)
 
     def encrypt_with_key(self, key: bytes, plaintext: str) -> str:
         """Encrypt text into a data blob."""
