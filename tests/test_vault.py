@@ -3,7 +3,9 @@
 # Date: 2026-10-16
 """``CryptoVault`` replicates the crate's vault over ``NoFec`` (CV-01 to CV-11)."""
 
+import base64
 import functools
+import struct
 from collections.abc import Callable
 
 import pytest
@@ -108,3 +110,18 @@ def test_oversized_input_is_rejected_before_decryption(blob: str) -> None:
     with pytest.raises(InvalidInputError) as caught:
         make_vault().decrypt_with_key(bytes(32), blob)
     assert str(caught.value) == "Invalid input: input exceeds maximum size"
+
+
+@pytest.mark.parametrize(
+    "plaintext", ["", "a", "sk-secret", "ñandú \U0001f510", "x" * 1000]
+)
+def test_encrypt_produces_a_fresh_blob_in_the_crate_layout(plaintext: str) -> None:
+    vault, key = make_vault(), bytes(range(32))
+    blob = vault.encrypt_with_key(key, plaintext)
+    other = vault.encrypt_with_key(key, plaintext)
+    assert blob != other  # fresh random nonce per message
+    raw = base64.b64decode(blob, validate=True)
+    encoded = plaintext.encode("utf-8")
+    assert raw[:5] == b"\x01" + struct.pack("<I", len(encoded))
+    assert len(raw) == 5 + 12 + len(encoded) + 16
+    assert vault.decrypt_with_key(key, blob) == plaintext

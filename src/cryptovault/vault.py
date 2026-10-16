@@ -60,6 +60,10 @@ class CryptoVault:
         capped._max_blob_len = min(cap, MAX_BLOB_LEN)
         return capped
 
+    def encrypt_with_key(self, key: bytes, plaintext: str) -> str:
+        """Encrypt text into a data blob."""
+        raise NotImplementedError
+
     def decrypt_with_key(self, key: bytes, blob: str) -> str:
         """Decrypt a data blob."""
         if len(key) != KEY_LEN:
