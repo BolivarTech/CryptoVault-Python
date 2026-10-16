@@ -8,8 +8,14 @@ import binascii
 import struct
 
 from cryptovault._blob import decode_blob
-from cryptovault.cipher import Aes256GcmSivCipher
-from cryptovault.constants import KEY_LEN, MAX_B64_LEN, MAX_BLOB_LEN, NONCE_LEN
+from cryptovault.cipher import Aes256GcmSivCipher, sample_nonce
+from cryptovault.constants import (
+    BLOB_VERSION,
+    KEY_LEN,
+    MAX_B64_LEN,
+    MAX_BLOB_LEN,
+    NONCE_LEN,
+)
 from cryptovault.error import EncodingError, InvalidInputError
 from cryptovault.fec import NoFec
 from cryptovault.kdf import Argon2Kdf, expand_aead_key
@@ -62,7 +68,13 @@ class CryptoVault:
 
     def encrypt_with_key(self, key: bytes, plaintext: str) -> str:
         """Encrypt text into a data blob."""
-        raise NotImplementedError
+        data = plaintext.encode("utf-8")
+        header = bytes([BLOB_VERSION]) + struct.pack("<I", len(data))
+        aad = bytes([_AAD_PURPOSE_DATA]) + header
+        nonce = sample_nonce()
+        sealed = self._cipher.encrypt(expand_aead_key(key), nonce, aad, data)
+        blob = self._fec.encode(header + nonce + sealed)
+        return base64.b64encode(blob).decode("ascii")
 
     def decrypt_with_key(self, key: bytes, blob: str) -> str:
         """Decrypt a data blob."""
