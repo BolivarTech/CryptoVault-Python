@@ -6,8 +6,11 @@
 import functools
 from collections.abc import Callable
 
+import pytest
+
 from cryptovault.cipher import Aes256GcmSivCipher
-from cryptovault.error import CryptoVaultError
+from cryptovault.constants import MAX_B64_LEN
+from cryptovault.error import CryptoVaultError, InvalidInputError
 from cryptovault.fec import NoFec
 from cryptovault.kdf import Argon2Kdf
 from cryptovault.vault import CryptoVault
@@ -74,3 +77,21 @@ def test_non_utf8_plaintext_reports_the_crate_utf8_error() -> None:
 def test_truncated_padded_and_relabelled_blobs_behave_as_in_the_crate() -> None:
     # 35 truncations, 2 appended tails (ignored, CV-Q6), 3 versions, 5 lengths.
     assert adversarial_mismatches("structure", 35 + 2 + 3 + 5) == []
+
+
+@pytest.mark.parametrize(
+    "blob",
+    [
+        # Over MAX_B64_LEN: rejected on length before the bad alphabet is seen.
+        "!" * (MAX_B64_LEN + 1),
+        # Under MAX_B64_LEN characters but over it in UTF-8 bytes, as Rust counts.
+        "é" * (MAX_B64_LEN // 2 + 1),
+        # Valid base64 of MAX_B64_LEN characters decodes to more than MAX_BLOB_LEN.
+        "A" * MAX_B64_LEN,
+    ],
+    ids=["base64-too-long", "utf8-bytes-too-long", "decoded-too-long"],
+)
+def test_oversized_input_is_rejected_before_decryption(blob: str) -> None:
+    with pytest.raises(InvalidInputError) as caught:
+        make_vault().decrypt_with_key(bytes(32), blob)
+    assert str(caught.value) == "Invalid input: input exceeds maximum size"
