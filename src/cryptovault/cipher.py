@@ -3,6 +3,7 @@
 # Date: 2026-10-16
 """AEAD strategy: AES-256-GCM-SIV (RFC 8452) from ``cryptography``."""
 
+import os
 from typing import Final
 
 from cryptography.exceptions import InvalidTag
@@ -15,8 +16,21 @@ _AUTH_FAILED: Final = "AES-256-GCM-SIV authentication failed"
 
 
 def sample_nonce() -> bytes:
-    """Draw a fresh nonce from the operating-system CSPRNG."""
-    raise NotImplementedError
+    """Draw a fresh random nonce from the operating-system CSPRNG.
+
+    Every message gets its own nonce; a counter or a fixed nonce is never used.
+
+    Returns:
+        ``NONCE_LEN`` (12) random bytes.
+
+    Raises:
+        CipherError: If the operating system cannot supply entropy. Weak bytes
+            are never returned instead.
+    """
+    try:
+        return os.urandom(NONCE_LEN)
+    except OSError as exc:
+        raise CipherError(f"OsRng nonce sampling failed: {exc}") from exc
 
 
 class Aes256GcmSivCipher:
