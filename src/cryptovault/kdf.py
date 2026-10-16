@@ -3,9 +3,16 @@
 # Date: 2026-10-16
 """Key-derivation strategy: Argon2id master key, HKDF-SHA256 sub-keys."""
 
+from typing import Final
+
+from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.argon2 import Argon2id
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
 from cryptovault.constants import ARGON2_M_KIB, ARGON2_P, ARGON2_T, KEY_LEN
+
+_HKDF_INFO_AEAD: Final = b"cryptovault:v1:aead"
+"""HKDF ``info`` label of the AEAD sub-key."""
 
 
 class Argon2Kdf:
@@ -39,10 +46,29 @@ class Argon2Kdf:
 
 
 def expand_aead_key(master: bytes) -> bytes:
-    """Expand the AEAD sub-key from a master key."""
-    raise NotImplementedError
+    """Expand the AES-256-GCM-SIV key from a master key.
+
+    ``HKDF-SHA256(salt = none, ikm = master, info = "cryptovault:v1:aead")``.
+    The raw master key is never used as a cipher key.
+
+    Args:
+        master: The 32-byte master key.
+
+    Returns:
+        The 32-byte AEAD key.
+    """
+    return _hkdf_expand(master, _HKDF_INFO_AEAD)
 
 
 def _hkdf_expand(master: bytes, info: bytes) -> bytes:
-    """HKDF-SHA256 with no salt."""
-    raise NotImplementedError
+    """Run HKDF-SHA256 (RFC 5869) with no salt and a 32-byte output.
+
+    Args:
+        master: The input keying material.
+        info: The context label that separates sub-keys.
+
+    Returns:
+        The 32-byte output keying material.
+    """
+    hkdf = HKDF(algorithm=hashes.SHA256(), length=KEY_LEN, salt=None, info=info)
+    return hkdf.derive(master)

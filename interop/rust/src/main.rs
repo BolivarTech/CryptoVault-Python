@@ -59,6 +59,18 @@ fn derive(vault: &CryptoVault) -> Vec<Value> {
         .collect()
 }
 
+/// AEAD sub-keys the crate's public `expand_aead_key` derives from master keys;
+/// read by `test_aead_subkey_matches_rfc_5869_and_the_crate` (fixture key `hkdf`).
+fn hkdf() -> Vec<Value> {
+    [counting(0x00, KEY_LEN), vec![0xff; KEY_LEN], counting(0x60, KEY_LEN)]
+        .iter()
+        .map(|master| {
+            let aead_key = cryptovault::kdf::expand_aead_key(master).expect("expand");
+            json!({ "master": hex::encode(master), "aead_key": hex::encode(&*aead_key) })
+        })
+        .collect()
+}
+
 /// Prints the full fixture document.
 fn fixtures() -> ExitCode {
     let vault = vault();
@@ -74,6 +86,7 @@ fn fixtures() -> ExitCode {
             "ARGON2_M_KIB": ARGON2_M_KIB, "ARGON2_T": ARGON2_T, "ARGON2_P": ARGON2_P,
         },
         "derive": derive(&vault),
+        "hkdf": hkdf(),
     });
     println!("{}", serde_json::to_string_pretty(&document).expect("serializable"));
     ExitCode::SUCCESS

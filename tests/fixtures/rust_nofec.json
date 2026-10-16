@@ -66,5 +66,19 @@
       "salt": ""
     }
   ],
-  "fec": "NoFec"
+  "fec": "NoFec",
+  "hkdf": [
+    {
+      "aead_key": "4d1af971497796f5ea4e87083aa105c7ffce10109551ac291d99d9a15079fb97",
+      "master": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+    },
+    {
+      "aead_key": "38dc690c51c84d395c1a1e30bd34a4ea0c090f2213ab8420142f4d3033c8b974",
+      "master": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    },
+    {
+      "aead_key": "a58ea96e5938d0f93d0143d401af069db502cc1258d755d7c1b1e13bc2fece3a",
+      "master": "606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f"
+    }
+  ]
 }
