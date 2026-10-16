@@ -211,6 +211,15 @@ class CryptoVault:
         self._fec = fec
         self._max_blob_len = MAX_BLOB_LEN
 
+    @classmethod
+    def default(cls) -> "CryptoVault":
+        """Build the crate's default vault.
+
+        Returns:
+            The default vault.
+        """
+        raise NotImplementedError
+
     def with_max_blob_len(self, cap: int) -> "CryptoVault":
         """Return a new vault that rejects decoded blobs longer than ``cap``.
 

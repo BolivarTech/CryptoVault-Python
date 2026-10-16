@@ -45,3 +45,16 @@ def test_every_crate_blob_opens_under_its_fec_strategy() -> None:
                 bytes.fromhex(row["kek"]), bytes.fromhex(row["salt"]), row["blob"]
             )
             assert material.hex() == row["key_material"]
+
+
+def test_default_vault_opens_the_crate_default_blobs() -> None:
+    rows = [
+        row
+        for row in load_rust_fec_fixtures()["vault_blobs"]
+        if row["fec"]["name"] == "ConcatenatedFec" and row["kind"] == "data"
+    ]
+    assert len(rows) == 5
+    vault = CryptoVault.default()
+    for row in rows:
+        got = vault.decrypt_with_key(bytes.fromhex(row["key"]), row["blob"])
+        assert got == row["plaintext"]
