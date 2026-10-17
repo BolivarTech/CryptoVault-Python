@@ -44,7 +44,7 @@ jobs:
     steps:
       # `fetch-depth: 0` because the rollback check needs the full tag list; a
       # shallow clone fetches no tags and would conclude nothing was released.
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -167,7 +167,7 @@ jobs:
           - { name: windows-x86_64, os: windows-latest, target: x64, manylinux: "off" }
           - { name: macos-universal2, os: macos-14, target: universal2-apple-darwin, manylinux: "off" }
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1.51.0
         with:
           target: ${{ matrix.target }}
@@ -188,7 +188,7 @@ jobs:
     if: needs.gate.outputs.should_release == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master, toolchain: stable
         with:
@@ -321,7 +321,7 @@ jobs:
     steps:
       # The checkout supplies tests/ and the interop crate; the package under
       # test always comes from the installed wheel, never from src/.
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: actions/download-artifact@v5
         with:
           name: dist
@@ -454,7 +454,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: actions/download-artifact@v5
         with:
           name: dist
