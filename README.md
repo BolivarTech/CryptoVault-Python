@@ -5,7 +5,7 @@ blob format, byte-compatible with the Rust crate.** AES-256-GCM-SIV under an HKD
 Argon2id key derivation and DEK/KEK key wrapping, followed by the crate's forward-error
 correction: Reed-Solomon, an interleaver and a Viterbi code, or no FEC at all.
 
-> **Status: 0.2.0, alpha.** Every FEC strategy of `cryptovault` 0.3.0 is implemented and
+> **Status: 0.3.0, alpha.** Every FEC strategy of `cryptovault` 0.3.0 is implemented and
 > checked in both directions against the crate.
 
 ---
@@ -98,19 +98,30 @@ The CSPRNG variant derives its seed from the master key with HKDF (`info =
 "cryptovault:v1:interleaver"`), and both ends must build it from the same master and depth.
 It is obfuscation, not security.
 
-The codecs are pure Python, so they are much slower than the Rust crate. Measured with
-CPython 3.11 on Windows:
+### Speed
 
-| Strategy | Encrypt 128 KiB | Decrypt 128 KiB | Decrypt 128 KiB, one flipped bit | Decrypt 1 KiB, one flipped bit |
-|---|---|---|---|---|
-| `ConcatenatedFec` | 1.4 s | 1.7 s | 15.6 s | 0.16 s |
-| `ViterbiOnlyFec` | 0.25 s | 0.66 s | 14.3 s | 0.12 s |
-| `ReedSolomonCodec` | 1.1 s | 1.0 s | 0.82 s | 0.01 s |
-| `NoFec` | < 0.01 s | < 0.01 s | fails, < 0.01 s | fails, < 0.01 s |
+The Reed-Solomon and Viterbi codecs come in two implementations that produce the same bytes.
+The platform wheels carry a compiled extension, `cryptovault._native`, built from the
+`reedsolomon` 0.2.0 and `viterbi` 0.2.0 crates that `cryptovault` itself uses. Everywhere
+else the package runs pure-Python ports of those crates. A platform with no compiled wheel
+gets the `py3-none-any` one, and on an interpreter the abi3 wheels do not cover (PyPy,
+free-threaded CPython) the extension does not load. Nothing needs configuring;
+`cryptovault.fec._codecs.ACTIVE.name` says which one is running. Measured with CPython 3.11
+on Windows:
 
-A clean Viterbi sub-block decodes directly. One with channel errors runs the full trellis,
-which in Python costs about 12 µs per coded bit pair, or about 12 s for a full 124 950-byte
-sub-block. Noisy channels carrying large messages pay that price.
+| Strategy | Codecs | Encrypt 128 KiB | Decrypt 128 KiB | Decrypt 128 KiB, one flipped bit | Decrypt 1 KiB, one flipped bit |
+|---|---|---|---|---|---|
+| `ConcatenatedFec` | compiled | 0.21 s | 0.22 s | 2.2 s | 0.02 s |
+| `ConcatenatedFec` | Python | 1.4 s | 1.7 s | 15.6 s | 0.16 s |
+| `ViterbiOnlyFec` | compiled | 0.03 s | 0.05 s | 2.6 s | 0.02 s |
+| `ViterbiOnlyFec` | Python | 0.25 s | 0.66 s | 14.3 s | 0.12 s |
+| `ReedSolomonCodec` | compiled | 0.02 s | 0.04 s | 0.04 s | < 0.01 s |
+| `ReedSolomonCodec` | Python | 1.1 s | 1.0 s | 0.82 s | 0.01 s |
+| `NoFec` | none | < 0.01 s | < 0.01 s | fails, < 0.01 s | fails, < 0.01 s |
+
+A clean Viterbi sub-block decodes directly with either implementation. One with channel
+errors runs the full trellis: about 2 s for a full 124 950-byte sub-block with the compiled
+codecs, the speed of the crate's own decoder, and about 12 s in Python.
 
 ## Security model
 
@@ -180,8 +191,9 @@ Reed-Solomon codewords and the outcome of 146 corrupted decodes, the interleaver
 permutations (the CSPRNG layer included), Viterbi encodings and 26 corrupted decodes down to
 the wrong bytes a heavily damaged stream decodes to, and 335 adversarial blobs under three
 strategies (sampled bit flips, bursts, truncation, rewritten headers, wrong keys and salts).
-In the other direction, a second test hands the crate blobs made in Python under every
-strategy and checks that it opens each one. The generator lives in `interop/rust`:
+The codec cases run against both the compiled and the Python codecs. In the other
+direction, a second test hands the crate blobs made in Python under every strategy and checks
+that it opens each one. The generator lives in `interop/rust`:
 
 ```sh
 uv run pytest                     # full suite, Rust fixtures included
@@ -194,18 +206,24 @@ cargo run --release --manifest-path interop/rust/Cargo.toml -- fec-fixtures \
 
 ## Requirements
 
-- **Python 3.11** or newer. Tested on Linux and Windows with 3.11 and 3.14.
+- **Python 3.11** or newer. Tested on Linux and Windows with 3.11 and 3.14. Compiled wheels
+  exist for Linux (x86_64 and aarch64, glibc 2.17+ and musl), Windows x86_64 and macOS
+  (universal2); any other platform gets the pure-Python wheel.
 - **`cryptography` 45.0.1 or newer**, linked against **OpenSSL 3.2 or newer** (AES-GCM-SIV and
   Argon2id need it; the CSPRNG layer also uses its ChaCha20). Releases before 45.0.1 reject an empty plaintext, which the crate allows.
   The official wheels qualify.
 
 ## Development
 
+A Rust toolchain (1.96 or newer) is needed: `uv sync` builds the extension in `native/` with
+maturin, and rebuilds it whenever its sources change.
+
 ```sh
 uv sync --locked
 uv run ruff check . && uv run ruff format --check . && uv run mypy . && uv run pytest
 uv run pip-audit
 uv build
+(cd native && cargo fmt --check && cargo clippy --release --all-targets -- -D warnings)
 ```
 
 ## Roadmap
@@ -214,11 +232,9 @@ uv build
    the crate in both directions.
 2. **The FEC strategies.** Reed-Solomon, the interleaver and Viterbi, so any `cryptovault`
    blob can be read from Python. Implemented and cross-checked in both directions.
-3. **A compiled FEC accelerator.** The codecs are pure Python, and a damaged sub-block runs
-   the full Viterbi trellis at about 12 µs per stage: a 128 KiB blob with one flipped bit takes
-   about 15 s to decrypt. The plan is an optional Rust extension (PyO3) that wraps the same
-   `reedsolomon` and `viterbi` crates the reference crate uses, with the pure-Python codecs
-   kept as the fallback where no wheel exists. The crate fixtures stay as its parity check.
+3. **Compiled codecs.** A PyO3 extension wraps the `reedsolomon` and `viterbi` crates the
+   reference crate uses, with the pure-Python codecs as the fallback where no compiled wheel
+   exists. Implemented; the crate fixtures check both.
 
 ## License
 
