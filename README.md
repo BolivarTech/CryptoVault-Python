@@ -24,10 +24,10 @@ the same four FEC strategies as the crate.
 ## Installation
 
 ```sh
-pip install cryptovault
+pip install cryptovault-py
 ```
 
-[Requirements](#requirements) lists the supported Python versions and the `cryptography` and
+The import name is `cryptovault`. [Requirements](#requirements) lists the supported Python versions and the `cryptography` and
 OpenSSL floor.
 
 ## Quick start

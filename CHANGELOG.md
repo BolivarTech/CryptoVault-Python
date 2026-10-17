@@ -28,6 +28,8 @@ both directions.
 ### Changed
 
 - `fec` is now a package; `from cryptovault.fec import NoFec` still works.
+- The distribution is named `cryptovault-py`, the name it is published under on PyPI. The
+  import name is still `cryptovault`.
 
 ## [0.1.0] - 2026-10-16
 
