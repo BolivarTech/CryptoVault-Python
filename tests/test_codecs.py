@@ -1,5 +1,5 @@
 # Author: Julian Bolivar
-# Version: 0.2.0
+# Version: 0.3.0
 # Date: 2026-10-16
 """The FEC strategies run on the compiled codecs, and on Python without them."""
 
