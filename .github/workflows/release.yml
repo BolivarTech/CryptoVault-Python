@@ -3,9 +3,9 @@ name: Release
 # The version in `pyproject.toml` is the SINGLE SOURCE OF TRUTH for a release.
 #
 # Push a version bump to `main` and this workflow validates it, runs the CI
-# suite, builds the sdist and the wheel, installs the wheel in clean
-# environments, publishes to PyPI and only THEN creates the `vX.Y.Z` tag and the
-# GitHub Release. Pushes that do not change the version are a no-op: the gate
+# suite, builds the compiled wheels, the pure-Python wheel and the sdist,
+# installs the wheels in clean environments, publishes to PyPI and only THEN
+# creates the `vX.Y.Z` tag and the GitHub Release. Pushes that do not change the version are a no-op: the gate
 # reports "already released" and nothing downstream runs.
 #
 # The tag is created last so that it means exactly one thing: this version
@@ -114,6 +114,18 @@ jobs:
             exit 1
           fi
 
+      # maturin takes the version from pyproject.toml; native/Cargo.toml carries
+      # the same number so the extension crate never claims another release.
+      - name: Assert native/Cargo.toml has the same version
+        run: |
+          set -euo pipefail
+          C="$(grep -m1 '^version = ' native/Cargo.toml | sed 's/^version = "\(.*\)"/\1/')"
+          if [ "$C" != "${{ steps.gate.outputs.version }}" ]; then
+            echo "::error::native/Cargo.toml says $C but pyproject.toml says ${{ steps.gate.outputs.version }}. Bump both, then run 'cargo update -p cryptovault-native --manifest-path native/Cargo.toml'."
+            exit 1
+          fi
+          echo "OK: native/Cargo.toml is at $C."
+
       # Keyed on `is_new_version`, so a PR that bumps is told at review time.
       # The release notes are extracted from this section, and a section still
       # marked "Unreleased" would ship notes that contradict the release.
@@ -136,45 +148,144 @@ jobs:
     if: needs.gate.outputs.should_release == 'true' || github.event_name == 'workflow_dispatch'
     uses: ./.github/workflows/ci.yml
 
-  build:
-    name: Build sdist and wheel
+  # One abi3 wheel per platform: it carries the compiled codecs and serves
+  # every CPython from 3.11 on. Built in the manylinux/musllinux containers on
+  # Linux, so the glibc floor is 2.17.
+  wheels:
+    name: Wheel ${{ matrix.name }}
+    needs: [gate, ci]
+    if: needs.gate.outputs.should_release == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: manylinux-x86_64, os: ubuntu-latest, target: x86_64, manylinux: "2014" }
+          - { name: manylinux-aarch64, os: ubuntu-24.04-arm, target: aarch64, manylinux: "2014" }
+          - { name: musllinux-x86_64, os: ubuntu-latest, target: x86_64, manylinux: musllinux_1_2 }
+          - { name: musllinux-aarch64, os: ubuntu-24.04-arm, target: aarch64, manylinux: musllinux_1_2 }
+          - { name: windows-x86_64, os: windows-latest, target: x64, manylinux: "off" }
+          - { name: macos-universal2, os: macos-14, target: universal2-apple-darwin, manylinux: "off" }
+    steps:
+      - uses: actions/checkout@v5
+      - uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1.51.0
+        with:
+          target: ${{ matrix.target }}
+          manylinux: ${{ matrix.manylinux }}
+          args: --release --locked --out dist
+      - uses: actions/upload-artifact@v5
+        with:
+          name: dist-${{ matrix.name }}
+          path: dist/*.whl
+          if-no-files-found: error
+
+  # The sdist, and the pure-Python wheel that pip falls back to on any platform
+  # without a compiled one (and on interpreters abi3 does not cover). That
+  # wheel is built with uv_build, which packages `src/cryptovault` alone.
+  pure:
+    name: sdist and pure-Python wheel
     needs: [gate, ci]
     if: needs.gate.outputs.should_release == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v6
-      - run: uv build
-      # Proof, not assumption: the distributions carry the package, its
-      # metadata and the licenses, and nothing else (no tests, fixtures or the
-      # Rust interop tool).
-      - name: Verify distribution names and contents
+      - uses: dtolnay/rust-toolchain@stable
+      - run: uv build --sdist
+      - name: Build the pure-Python wheel with uv_build
+        run: |
+          set -euo pipefail
+          python3 - <<'EOF'
+          import pathlib, re
+
+          path = pathlib.Path("pyproject.toml")
+          text = path.read_text(encoding="utf-8")
+          block = re.compile(
+              r'^\[build-system\]\nrequires = \[[^\]]*\]\nbuild-backend = "maturin"\n', re.M)
+          text, count = block.subn(
+              '[build-system]\nrequires = ["uv_build>=0.13.0,<0.14"]\n'
+              'build-backend = "uv_build"\n', text)
+          if count != 1:
+              raise SystemExit("could not find the maturin [build-system] table")
+          path.write_text(text, encoding="utf-8")
+          EOF
+          uv build --wheel
+          git checkout -- pyproject.toml
+      - uses: actions/upload-artifact@v5
+        with:
+          name: dist-pure
+          path: |
+            dist/*.whl
+            dist/*.tar.gz
+          if-no-files-found: error
+
+  # Proof, not assumption: exactly the expected distributions, each carrying
+  # the package, its metadata and the licenses and nothing else (no tests,
+  # fixtures or the Rust interop tool); every compiled wheel has the extension,
+  # the pure one has none, and all of them ship the same Python sources.
+  verify:
+    name: Verify distributions
+    needs: [gate, wheels, pure]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          pattern: dist-*
+          merge-multiple: true
+          path: dist
+      - name: Check names and contents
         env:
           VERSION: ${{ needs.gate.outputs.version }}
         run: |
           python3 - <<'EOF'
-          import os, pathlib, sys, tarfile, zipfile
+          import os, pathlib, re, sys, tarfile, zipfile
 
           v = os.environ["VERSION"]
+          stem = f"cryptovault_py-{v}"
           dist = pathlib.Path("dist")
-          wheel = dist / f"cryptovault_py-{v}-py3-none-any.whl"
-          sdist = dist / f"cryptovault_py-{v}.tar.gz"
-          # uv build also drops a `.gitignore` in dist/; hidden files are never uploaded.
-          found = sorted(p.name for p in dist.iterdir() if not p.name.startswith("."))
-          if found != sorted([wheel.name, sdist.name]):
-              sys.exit(f"unexpected distributions: {found}")
+          names = sorted(p.name for p in dist.iterdir() if not p.name.startswith("."))
+          platforms = [r"manylinux_2_17_x86_64\.manylinux2014_x86_64",
+                       r"manylinux_2_17_aarch64\.manylinux2014_aarch64",
+                       r"musllinux_1_2_x86_64", r"musllinux_1_2_aarch64",
+                       r"win_amd64", r"macosx_\d+_\d+_universal2"]
+          compiled = [n for n in names if "-cp311-abi3-" in n]
+          pure, sdist = f"{stem}-py3-none-any.whl", f"{stem}.tar.gz"
+          errors = []
+          for tag in platforms:
+              pattern = rf"{re.escape(stem)}-cp311-abi3-{tag}\.whl"
+              if len([n for n in compiled if re.fullmatch(pattern, n)]) != 1:
+                  errors.append(f"no single compiled wheel for {tag}")
+          if sorted(compiled + [pure, sdist]) != names or len(compiled) != len(platforms):
+              errors.append(f"unexpected distributions: {names}")
 
-          bad = [n for n in zipfile.ZipFile(wheel).namelist()
-                 if not n.startswith(("cryptovault/", f"cryptovault_py-{v}.dist-info/"))]
-          root = f"cryptovault_py-{v}"
-          allowed = {f"{root}/{n}" for n in ("LICENSE-APACHE", "LICENSE-MIT",
-                     "PKG-INFO", "README.md", "pyproject.toml", "pyproject.toml.orig")}
-          allowed |= {root, f"{root}/src"}
-          bad += [n for n in tarfile.open(sdist).getnames()
-                  if n not in allowed and not n.startswith(f"{root}/src/cryptovault")]
-          if bad:
-              sys.exit(f"files outside the package in the distributions: {bad}")
-          print("OK:", found)
+          def sources(members):
+              return sorted(n for n in members
+                            if n.startswith("cryptovault/") and n.endswith(".py"))
+
+          reference = None
+          for name in compiled + [pure]:
+              members = zipfile.ZipFile(dist / name).namelist()
+              outside = [n for n in members
+                         if not n.startswith(("cryptovault/", f"{stem}.dist-info/"))]
+              native = [n for n in members
+                        if re.fullmatch(r"cryptovault/_native\..*(pyd|so)", n)]
+              if outside:
+                  errors.append(f"{name}: files outside the package: {outside}")
+              if len(native) != (0 if name == pure else 1):
+                  errors.append(f"{name}: extension modules {native}")
+              reference = reference or sources(members)
+              if sources(members) != reference:
+                  errors.append(f"{name}: Python sources differ from the other wheels")
+          allowed = re.compile(
+              rf"{re.escape(stem)}(/(LICENSE-APACHE|LICENSE-MIT|PKG-INFO|README\.md"
+              r"|pyproject\.toml|native(/Cargo\.(toml|lock)|/src(/.*\.rs)?)?"
+              r"|src(/cryptovault(/.*)?)?))?")
+          for member in tarfile.open(dist / sdist).getnames():
+              if not allowed.fullmatch(member):
+                  errors.append(f"{sdist}: unexpected {member}")
+          if errors:
+              sys.exit("\n".join(errors))
+          print("OK:", *names, sep="\n  ")
           EOF
       - uses: actions/upload-artifact@v5
         with:
@@ -182,18 +293,19 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
-  # The wheel as a consumer gets it: installed from the file into a clean
-  # environment, imported from outside the source tree, run with and without
-  # `-O` (which strips `assert`), against whatever cryptography/OpenSSL resolves.
+  # The wheels as a consumer gets them: installed into a clean environment,
+  # imported from outside the source tree, run with and without `-O` (which
+  # strips `assert`), against whatever cryptography/OpenSSL resolves. pip
+  # picks the compiled wheel, which must load the extension; the pure wheel,
+  # installed on its own, must run on the Python codecs.
   smoke:
     name: Wheel smoke (${{ matrix.os }}, Python ${{ matrix.python }})
-    needs: [gate, build]
-    if: needs.gate.outputs.should_release == 'true' || github.event_name == 'workflow_dispatch'
+    needs: [gate, verify]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, ubuntu-24.04-arm, windows-latest, macos-14]
         python: ["3.11", "3.14"]
     defaults:
       run:
@@ -204,19 +316,9 @@ jobs:
           name: dist
           path: dist
       - uses: astral-sh/setup-uv@v6
-      - name: Install the wheel in a clean environment
-        run: |
-          set -euo pipefail
-          uv venv "$RUNNER_TEMP/smoke" --python "${{ matrix.python }}"
-          if [ "$RUNNER_OS" = "Windows" ]; then PY="$RUNNER_TEMP/smoke/Scripts/python.exe"; else PY="$RUNNER_TEMP/smoke/bin/python"; fi
-          uv pip install --python "$PY" dist/*.whl
-          echo "PY=$PY" >> "$GITHUB_ENV"
-      - name: Round-trip every strategy with and without -O
+      - name: Write the smoke script
         working-directory: ${{ runner.temp }}
-        env:
-          VERSION: ${{ needs.gate.outputs.version }}
         run: |
-          set -euo pipefail
           cat > smoke.py <<'EOF'
           import importlib.metadata, os, sys
 
@@ -226,20 +328,23 @@ jobs:
           import cryptovault
           from cryptovault import CryptoVault, CryptoVaultError, generate_dek, generate_salt
           from cryptovault.fec import (ConcatenatedFec, NoFec, ReedSolomonCodec,
-                                       ViterbiOnlyFec)
+                                       ViterbiOnlyFec, _codecs)
           from cryptovault.cipher import Aes256GcmSivCipher
           from cryptovault.kdf import Argon2Kdf
 
           assert_ = lambda ok, what: ok or sys.exit(f"FAIL: {what}")
           print(sys.version.split()[0], "cryptography", cryptography.__version__,
-                backend.openssl_version_text(), "optimize", sys.flags.optimize)
+                backend.openssl_version_text(), "optimize", sys.flags.optimize,
+                "codecs", _codecs.ACTIVE.name)
           assert_(importlib.metadata.version("cryptovault-py") == os.environ["VERSION"],
                   "installed version")
+          assert_(_codecs.ACTIVE.name == os.environ["BACKEND"], "codec backend")
           assert_(not cryptovault.__file__.startswith(os.getcwd() + os.sep + "src"),
                   "imported from the source tree")
           key, kek, salt, dek = generate_dek(), generate_dek(), generate_salt(), generate_dek()
           text = "smoke " * 20000
-          strategies = [ConcatenatedFec.default(), ConcatenatedFec.with_csprng_from_master(key, 5),
+          strategies = [ConcatenatedFec.default(),
+                        ConcatenatedFec.with_csprng_from_master(key, 5),
                         ViterbiOnlyFec(), ReedSolomonCodec(), NoFec()]
           for fec in strategies:
               vault = CryptoVault(Argon2Kdf(), Aes256GcmSivCipher(), fec)
@@ -259,6 +364,28 @@ jobs:
                   "default vault with an Argon2id key")
           print("SMOKE OK")
           EOF
+      - name: Compiled wheel, with and without -O
+        env:
+          VERSION: ${{ needs.gate.outputs.version }}
+          BACKEND: native
+        run: |
+          set -euo pipefail
+          uv venv "$RUNNER_TEMP/native" --python "${{ matrix.python }}"
+          if [ "$RUNNER_OS" = "Windows" ]; then PY="$RUNNER_TEMP/native/Scripts/python.exe"; else PY="$RUNNER_TEMP/native/bin/python"; fi
+          uv pip install --python "$PY" --find-links dist "cryptovault-py==$VERSION"
+          cd "$RUNNER_TEMP"
+          "$PY" -I smoke.py
+          "$PY" -I -O smoke.py
+      - name: Pure-Python wheel, with and without -O
+        env:
+          VERSION: ${{ needs.gate.outputs.version }}
+          BACKEND: python
+        run: |
+          set -euo pipefail
+          uv venv "$RUNNER_TEMP/pure" --python "${{ matrix.python }}"
+          if [ "$RUNNER_OS" = "Windows" ]; then PY="$RUNNER_TEMP/pure/Scripts/python.exe"; else PY="$RUNNER_TEMP/pure/bin/python"; fi
+          uv pip install --python "$PY" "dist/cryptovault_py-$VERSION-py3-none-any.whl"
+          cd "$RUNNER_TEMP"
           "$PY" -I smoke.py
           "$PY" -I -O smoke.py
 
@@ -268,7 +395,7 @@ jobs:
   # PyPI trusts this workflow in the `pypi` environment of this repository.
   publish:
     name: Publish to PyPI
-    needs: [gate, build, smoke]
+    needs: [gate, verify, smoke]
     if: needs.gate.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     environment:
