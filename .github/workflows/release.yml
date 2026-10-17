@@ -303,7 +303,9 @@ jobs:
   # imported from outside the source tree, run with and without `-O` (which
   # strips `assert`), against whatever cryptography/OpenSSL resolves. pip
   # picks the compiled wheel, which must load the extension; the pure wheel,
-  # installed on its own, must run on the Python codecs.
+  # installed on its own, must run on the Python codecs. Each installed wheel
+  # then runs the crate fixtures (Rust -> Python) and has the real Rust crate
+  # open the blobs it makes (Python -> Rust), on every platform it ships for.
   smoke:
     name: Wheel smoke (${{ matrix.os }}, Python ${{ matrix.python }})
     needs: [gate, verify]
@@ -317,12 +319,20 @@ jobs:
       run:
         shell: bash
     steps:
+      # The checkout supplies tests/ and the interop crate; the package under
+      # test always comes from the installed wheel, never from src/.
+      - uses: actions/checkout@v5
       - uses: actions/download-artifact@v5
         with:
           name: dist
           path: dist
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
-      - name: Write the smoke script
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master, toolchain: stable
+        with:
+          toolchain: stable
+      - name: Pin the test dependencies from uv.lock
+        run: uv export --frozen --only-group dev --no-emit-project --no-hashes -o "$RUNNER_TEMP/dev.txt"
+      - name: Write the checks
         working-directory: ${{ runner.temp }}
         run: |
           cat > smoke.py <<'EOF'
@@ -370,6 +380,16 @@ jobs:
                   "default vault with an Argon2id key")
           print("SMOKE OK")
           EOF
+          # Run from the checkout with the installed interpreter. It fails unless
+          # `cryptovault` resolves to the installed wheel rather than to src/.
+          cat > crosscheck.sh <<'EOF'
+          set -euo pipefail
+          PY="$1"; shift
+          uv pip install --python "$PY" -r "$RUNNER_TEMP/dev.txt"
+          "$PY" -c "import cryptovault, sys; f = cryptovault.__file__; sys.exit(0 if 'site-packages' in f else 'not the installed wheel: ' + f)"
+          "$PY" -m pytest tests -q -p no:cacheprovider "$@"
+          "$PY" -m pytest tests/test_interop_rust.py -m interop -q -p no:cacheprovider
+          EOF
       - name: Compiled wheel, with and without -O
         env:
           VERSION: ${{ needs.gate.outputs.version }}
@@ -379,9 +399,10 @@ jobs:
           uv venv "$RUNNER_TEMP/native" --python "${{ matrix.python }}"
           if [ "$RUNNER_OS" = "Windows" ]; then PY="$RUNNER_TEMP/native/Scripts/python.exe"; else PY="$RUNNER_TEMP/native/bin/python"; fi
           uv pip install --python "$PY" --find-links dist "cryptovault-py==$VERSION"
-          cd "$RUNNER_TEMP"
-          "$PY" -I smoke.py
-          "$PY" -I -O smoke.py
+          (cd "$RUNNER_TEMP" && "$PY" -I smoke.py && "$PY" -I -O smoke.py)
+          echo "PY_NATIVE=$PY" >> "$GITHUB_ENV"
+      - name: Compiled wheel against the Rust crate, both directions
+        run: bash "$RUNNER_TEMP/crosscheck.sh" "$PY_NATIVE"
       - name: Pure-Python wheel, with and without -O
         env:
           VERSION: ${{ needs.gate.outputs.version }}
@@ -391,9 +412,14 @@ jobs:
           uv venv "$RUNNER_TEMP/pure" --python "${{ matrix.python }}"
           if [ "$RUNNER_OS" = "Windows" ]; then PY="$RUNNER_TEMP/pure/Scripts/python.exe"; else PY="$RUNNER_TEMP/pure/bin/python"; fi
           uv pip install --python "$PY" "dist/cryptovault_py-$VERSION-py3-none-any.whl"
-          cd "$RUNNER_TEMP"
-          "$PY" -I smoke.py
-          "$PY" -I -O smoke.py
+          (cd "$RUNNER_TEMP" && "$PY" -I smoke.py && "$PY" -I -O smoke.py)
+          echo "PY_PURE=$PY" >> "$GITHUB_ENV"
+      # The compiled half of the codec tests needs the extension this wheel
+      # does not carry; the Python half and everything else still runs.
+      - name: Pure-Python wheel against the Rust crate, both directions
+        run: >-
+          bash "$RUNNER_TEMP/crosscheck.sh" "$PY_PURE"
+          -k "not native and not test_compiled_codecs_are_the_active_backend"
 
   # PyPI comes BEFORE the tag: a publish is irreversible (yank only), so it is
   # the last thing that can genuinely fail. If it does, no tag is created and
