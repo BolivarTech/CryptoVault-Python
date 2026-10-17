@@ -32,3 +32,6 @@ interop/rust/target/
 
 # Build output
 dist/
+
+# Rust build output of the native extension
+native/target/

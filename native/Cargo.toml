@@ -1,0 +1,24 @@
+[package]
+name = "cryptovault-native"
+version = "0.3.0"
+edition = "2021"
+rust-version = "1.96"
+description = "Compiled Reed-Solomon and Viterbi codecs for the cryptovault Python package."
+license = "MIT OR Apache-2.0"
+publish = false
+
+[lib]
+name = "_native"
+crate-type = ["cdylib"]
+
+[dependencies]
+# One abi3 wheel per platform covers every CPython from 3.11 on.
+pyo3 = { version = "=0.29.3", features = ["abi3-py311"] }
+# The exact codec releases the cryptovault crate pins: the concatenated wire
+# format, the miscorrections included, is locked to them.
+reedsolomon = "=0.2.0"
+viterbi = "=0.2.0"
+
+[profile.release]
+lto = true
+codegen-units = 1

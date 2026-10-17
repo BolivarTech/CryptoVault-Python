@@ -8,12 +8,22 @@ The strategies never call a codec module directly: they go through
 without touching the framing logic around them.
 """
 
+import importlib
 from collections.abc import Callable
 from dataclasses import dataclass
+from types import ModuleType
 
 from cryptovault.constants import RS_DATA, RS_PARITY
 from cryptovault.fec import _viterbi
 from cryptovault.fec._reedsolomon import ReedSolomon
+
+# The pure-Python wheel, and interpreters the abi3 wheels do not cover (PyPy,
+# free-threaded CPython), have no compiled extension.
+_native: ModuleType | None
+try:
+    _native = importlib.import_module("cryptovault._native")
+except ImportError:
+    _native = None
 
 
 @dataclass(frozen=True)
@@ -48,8 +58,22 @@ PYTHON = CodecBackend(
 )
 """The pure-Python ports of the ``reedsolomon`` and ``viterbi`` crates."""
 
-NATIVE: CodecBackend | None = None
+
+def _wrap_native(native: ModuleType | None) -> CodecBackend | None:
+    """Wrap the compiled extension, or return ``None`` when it is absent."""
+    if native is None:
+        return None
+    return CodecBackend(
+        name="native",
+        rs_encode=native.rs_encode,
+        rs_decode=native.rs_decode,
+        viterbi_encode=native.viterbi_encode,
+        viterbi_decode=native.viterbi_decode,
+    )
+
+
+NATIVE = _wrap_native(_native)
 """The compiled ``reedsolomon`` and ``viterbi`` crates, or ``None``."""
 
-ACTIVE = PYTHON
+ACTIVE = NATIVE or PYTHON
 """The backend the FEC strategies use."""

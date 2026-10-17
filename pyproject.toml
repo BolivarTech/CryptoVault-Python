@@ -34,13 +34,32 @@ dev = [
     "ruff>=0.6",
 ]
 
+# maturin builds the platform wheels, which carry the compiled codecs in
+# `cryptovault._native`. The release also ships a pure-Python wheel, built with
+# uv_build (`[tool.uv.build-backend]` below), for platforms without one.
 [build-system]
-requires = ["uv_build>=0.13.0,<0.14"]
-build-backend = "uv_build"
+requires = ["maturin>=1.15,<2"]
+build-backend = "maturin"
+
+[tool.maturin]
+manifest-path = "native/Cargo.toml"
+python-source = "src"
+module-name = "cryptovault._native"
+features = ["pyo3/extension-module"]
+profile = "release"
 
 # The distribution is `cryptovault-py` on PyPI; the import name stays `cryptovault`.
 [tool.uv.build-backend]
 module-name = "cryptovault"
+
+[tool.uv]
+# Rebuild the editable install whenever the extension's sources change.
+cache-keys = [
+    { file = "pyproject.toml" },
+    { file = "native/Cargo.toml" },
+    { file = "native/Cargo.lock" },
+    { file = "native/src/**/*.rs" },
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "scripts", "src", "README.md"]
