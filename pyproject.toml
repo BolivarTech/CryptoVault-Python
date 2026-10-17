@@ -51,6 +51,8 @@ profile = "release"
 # The distribution is `cryptovault-py` on PyPI; the import name stays `cryptovault`.
 [tool.uv.build-backend]
 module-name = "cryptovault"
+# A local maturin build leaves the extension in src/; the pure wheel never ships it.
+wheel-exclude = ["_native.*"]
 
 [tool.uv]
 # Rebuild the editable install whenever the extension's sources change.
