@@ -173,7 +173,7 @@ jobs:
           target: ${{ matrix.target }}
           manylinux: ${{ matrix.manylinux }}
           args: --release --locked --out dist
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         with:
           name: dist-${{ matrix.name }}
           path: dist/*.whl
@@ -213,7 +213,7 @@ jobs:
           EOF
           uv build --wheel
           git checkout -- pyproject.toml
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         with:
           name: dist-pure
           path: |
@@ -293,7 +293,7 @@ jobs:
               sys.exit("\n".join(errors))
           print("OK:", *names, sep="\n  ")
           EOF
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         with:
           name: dist
           path: dist/*
