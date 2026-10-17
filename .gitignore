@@ -32,3 +32,8 @@ interop/rust/target/
 
 # Build output
 dist/
+
+# Rust build output of the native extension
+native/target/
+# The extension a local maturin build places next to the sources
+src/cryptovault/_native.*

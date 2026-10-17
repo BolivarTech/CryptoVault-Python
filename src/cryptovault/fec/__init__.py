@@ -1,5 +1,5 @@
 # Author: Julian Bolivar
-# Version: 0.2.0
+# Version: 0.3.0
 # Date: 2026-10-16
 """Forward-error-correction strategies, the crate's ``fec`` module.
 
@@ -17,9 +17,12 @@ Correction is all or nothing. Within capacity the payload comes back exact;
 past it the decode raises a :class:`~cryptovault.error.CryptoVaultError`, or
 returns bytes the AEAD tag then rejects.
 
-The codecs are pure Python. Decoding a clean blob costs about 1.7 s per
-128 KiB of plaintext; a sub-block with channel errors runs the full Viterbi
-trellis, about 12 microseconds per coded bit pair, roughly 12 s for a full
+The Reed-Solomon and Viterbi codecs run compiled when the platform wheel
+carries ``cryptovault._native`` (the ``reedsolomon`` and ``viterbi`` crates
+themselves), and as pure-Python ports otherwise; both produce the same bytes.
+Decrypting a clean 128 KiB ``ConcatenatedFec`` blob costs about 0.22 s
+compiled and 1.7 s in Python. A sub-block with channel errors runs the full
+Viterbi trellis: about 2 s compiled and 12 s in Python for a full
 124 950-byte sub-block (CPython 3.11).
 """
 

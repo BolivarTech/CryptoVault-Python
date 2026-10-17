@@ -12,6 +12,8 @@ permissions:
   contents: read
 
 jobs:
+  # Every `uv sync` builds the project with maturin, which compiles the codec
+  # extension in native/, so each job that syncs needs a Rust toolchain.
   gates:
     name: gates (${{ matrix.os }}, Python ${{ matrix.python }})
     runs-on: ${{ matrix.os }}
@@ -24,11 +26,16 @@ jobs:
       UV_PYTHON: ${{ matrix.python }}
     steps:
       - uses: actions/checkout@v5
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master, toolchain: stable
+        with:
+          toolchain: stable
       - run: uv sync --locked
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run mypy .
+      # Runs the crate fixtures against both codec backends; a missing
+      # extension fails the suite instead of skipping the compiled half.
       - run: uv run pytest
 
   lowest:
@@ -38,7 +45,10 @@ jobs:
       UV_PYTHON: "3.11"
     steps:
       - uses: actions/checkout@v5
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master, toolchain: stable
+        with:
+          toolchain: stable
       - run: uv run --isolated --resolution lowest-direct pytest
 
   interop:
@@ -52,10 +62,31 @@ jobs:
       UV_PYTHON: "3.11"
     steps:
       - uses: actions/checkout@v5
-      - uses: astral-sh/setup-uv@v6
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master, toolchain: stable
+        with:
+          toolchain: stable
       - run: uv sync --locked
       - run: uv run pytest -m interop
+
+  native:
+    name: native extension (fmt, clippy, audit)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: native
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master, toolchain: stable
+        with:
+          toolchain: stable
+          components: clippy, rustfmt
+      - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
+        with:
+          tool: cargo-audit
+      - run: cargo fmt --check
+      - run: cargo clippy --release --all-targets --locked -- -D warnings
+      - run: cargo audit
 
   package:
     name: audit and build
@@ -64,7 +95,10 @@ jobs:
       UV_PYTHON: "3.11"
     steps:
       - uses: actions/checkout@v5
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master, toolchain: stable
+        with:
+          toolchain: stable
       - run: uv sync --locked
       - run: uv run pip-audit
       - run: uv build

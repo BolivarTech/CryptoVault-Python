@@ -1,14 +1,16 @@
 # Author: Julian Bolivar
-# Version: 0.2.0
+# Version: 0.3.0
 # Date: 2026-10-16
 """``ReedSolomonCodec`` reproduces the crate's RS(255, 223) outer code."""
 
 from cryptovault.error import CryptoVaultError
-from cryptovault.fec import ReedSolomonCodec
+from cryptovault.fec import ReedSolomonCodec, _codecs
 from tests.conftest import load_rust_fec_fixtures
 
 
-def test_rs_encode_matches_the_crate_codewords() -> None:
+def test_rs_encode_matches_the_crate_codewords(
+    codec_backend: _codecs.CodecBackend,
+) -> None:
     cases = load_rust_fec_fixtures()["rs_encode"]
     assert len(cases) == 7
     codec = ReedSolomonCodec()
@@ -17,7 +19,9 @@ def test_rs_encode_matches_the_crate_codewords() -> None:
         assert encoded.hex() == case["encoded"]
 
 
-def test_rs_decode_corrects_and_fails_exactly_as_the_crate() -> None:
+def test_rs_decode_corrects_and_fails_exactly_as_the_crate(
+    codec_backend: _codecs.CodecBackend,
+) -> None:
     cases = load_rust_fec_fixtures()["rs_decode"]
     assert len(cases) == 146
     codec = ReedSolomonCodec()
