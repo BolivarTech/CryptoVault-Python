@@ -13,7 +13,9 @@
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 use reedsolomon::{ReedSolomon, RsError};
-use viterbi::{CcsdsViterbiDecoder, CodeParams, CodedBlock, DecodeError, ViterbiEncoder};
+use viterbi::{
+    CcsdsViterbiDecoder, CodeParams, CodedBlock, DecodeError, DecodedBlock, ViterbiEncoder,
+};
 
 /// Module holding the low-level Reed-Solomon exceptions.
 const RS_ERRORS: &str = "cryptovault.fec._reedsolomon";
@@ -27,6 +29,14 @@ const FEC_FAILED: &str = "forward error correction failed";
 const PAD_BITS: usize = 4;
 /// Coded bytes of the smallest sub-block body: one info byte plus the tail.
 const MIN_BODY: usize = 4;
+/// Register memory of the K=7 code.
+const MEMORY: u32 = 6;
+/// Mask of the 6-bit register state.
+const STATE_MASK: u32 = (1 << MEMORY) - 1;
+/// State taps of the first generator `0o171` (its input tap, bit 6, removed).
+const FIRST_GENERATOR_STATE_TAPS: u32 = 0o171 & STATE_MASK;
+/// Mask of the coded bits in the last byte of a body (the rest is padding).
+const LAST_BYTE_CODED_MASK: u8 = 0xF0;
 
 /// Build an instance of the Python exception `module.class(message)`.
 ///
@@ -135,6 +145,12 @@ fn viterbi_decode<'py>(py: Python<'py>, body: &[u8]) -> PyResult<Bound<'py, PyBy
         return Err(malformed(py));
     }
     let decoded = py.detach(|| {
+        if let Some(clean) = decode_exact_codeword(body) {
+            return Ok(DecodedBlock {
+                nbits: clean.len() * 8,
+                bytes: clean,
+            });
+        }
         let info_bits = (body.len() / 2 - 1) * 8;
         let mut decoder = CcsdsViterbiDecoder::new(CodeParams::ccsds_r1_2(), info_bits)
             .map_err(|_| DecodeError::AllocationFailed)?;
@@ -148,6 +164,43 @@ fn viterbi_decode<'py>(py: Python<'py>, body: &[u8]) -> PyResult<Bound<'py, PyBy
         Err(DecodeError::AllocationFailed) => Err(fec_failed(py)),
         Err(DecodeError::LengthMismatch | DecodeError::InputTooLong { .. }) => Err(malformed(py)),
     }
+}
+
+/// Decode `body` directly when it is an exact codeword, the clean-channel case.
+///
+/// The first output of each symbol is the input bit XOR a parity of the
+/// register state, so the info bits follow from the symbols alone. The
+/// candidate is accepted only if the crate's encoder reproduces `body`; a
+/// codeword's zero-distance path is then the only survivor, so the full
+/// trellis would return the same bytes.
+///
+/// Complexity: O(len(body)).
+fn decode_exact_codeword(body: &[u8]) -> Option<Vec<u8>> {
+    let info_bytes = body.len() / 2 - 1;
+    let mut candidate = Vec::with_capacity(info_bytes);
+    let mut state = 0u32;
+    for index in 0..info_bytes * 8 {
+        // Symbol `index` holds bits 2*index (first output) and 2*index + 1.
+        let position = 2 * index;
+        let first_output = u32::from(body[position / 8] >> (7 - position % 8)) & 1;
+        let bit = first_output ^ ((state & FIRST_GENERATOR_STATE_TAPS).count_ones() & 1);
+        if index % 8 == 0 {
+            candidate.push(0);
+        }
+        // The cast keeps the single info bit, at its MSB-first position.
+        *candidate.last_mut()? |= (bit as u8) << (7 - index % 8);
+        state = ((bit << MEMORY) | state) >> 1;
+    }
+    let coded = ViterbiEncoder::new(CodeParams::ccsds_r1_2())
+        .ok()?
+        .encode(&candidate)
+        .ok()?
+        .bytes;
+    let (last, head) = body.split_last()?;
+    let exact = coded.len() == body.len()
+        && coded[..head.len()] == *head
+        && coded[head.len()] == last & LAST_BYTE_CODED_MASK;
+    exact.then_some(candidate)
 }
 
 /// The `cryptovault._native` extension module.
