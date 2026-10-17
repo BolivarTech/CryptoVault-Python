@@ -193,7 +193,8 @@ the wrong bytes a heavily damaged stream decodes to, and 335 adversarial blobs u
 strategies (sampled bit flips, bursts, truncation, rewritten headers, wrong keys and salts).
 The codec cases run against both the compiled and the Python codecs. In the other
 direction, a second test hands the crate blobs made in Python under every strategy and checks
-that it opens each one. The generator lives in `interop/rust`:
+that it opens each one. Before publishing, the release runs both directions again against
+every built wheel, compiled and pure, installed on each platform it ships for. The generator lives in `interop/rust`:
 
 ```sh
 uv run pytest                     # full suite, Rust fixtures included
