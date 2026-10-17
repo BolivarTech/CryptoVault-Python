@@ -48,5 +48,8 @@ PYTHON = CodecBackend(
 )
 """The pure-Python ports of the ``reedsolomon`` and ``viterbi`` crates."""
 
+NATIVE: CodecBackend | None = None
+"""The compiled ``reedsolomon`` and ``viterbi`` crates, or ``None``."""
+
 ACTIVE = PYTHON
 """The backend the FEC strategies use."""

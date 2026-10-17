@@ -8,11 +8,13 @@ import hashlib
 import pytest
 
 from cryptovault.error import CryptoVaultError
-from cryptovault.fec import ViterbiCodec, ViterbiOnlyFec, _viterbi
+from cryptovault.fec import ViterbiCodec, ViterbiOnlyFec, _codecs, _viterbi
 from tests.conftest import load_rust_fec_fixtures
 
 
-def test_viterbi_encode_matches_the_crate_including_chunking() -> None:
+def test_viterbi_encode_matches_the_crate_including_chunking(
+    codec_backend: _codecs.CodecBackend,
+) -> None:
     cases = load_rust_fec_fixtures()["viterbi_encode"]
     assert [case["stream_len"] for case in cases] == [0, 1, 33, 255, 1275, 125205]
     codec = ViterbiCodec()
@@ -23,7 +25,9 @@ def test_viterbi_encode_matches_the_crate_including_chunking() -> None:
         assert hashlib.sha256(encoded).hexdigest() == case["encoded_sha256"]
 
 
-def test_viterbi_decode_recovers_and_miscorrects_exactly_as_the_crate() -> None:
+def test_viterbi_decode_recovers_and_miscorrects_exactly_as_the_crate(
+    codec_backend: _codecs.CodecBackend,
+) -> None:
     cases = load_rust_fec_fixtures()["viterbi_decode"]
     assert len(cases) == 26
     codec = ViterbiCodec()
@@ -48,12 +52,15 @@ def test_clean_viterbi_body_decodes_without_the_trellis(
     def no_trellis(symbols: list[int], stages: int) -> bytes:
         raise AssertionError("the trellis ran on a clean body")
 
+    monkeypatch.setattr(_codecs, "ACTIVE", _codecs.PYTHON)
     monkeypatch.setattr(_viterbi, "_trellis_decode", no_trellis)
     stream = bytes(range(256)) * 600
     assert ViterbiCodec().decode(ViterbiCodec().encode(stream)) == stream
 
 
-def test_viterbi_only_fec_frames_and_truncates_as_the_crate() -> None:
+def test_viterbi_only_fec_frames_and_truncates_as_the_crate(
+    codec_backend: _codecs.CodecBackend,
+) -> None:
     cases = load_rust_fec_fixtures()["viterbi_only"]
     assert len(cases) == 12
     fec = ViterbiOnlyFec()

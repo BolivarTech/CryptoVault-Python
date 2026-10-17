@@ -15,6 +15,10 @@ import json
 import pathlib
 from typing import Any
 
+import pytest
+
+from cryptovault.fec import _codecs
+
 FIXTURE_DIR = pathlib.Path(__file__).parent / "fixtures"
 FIXTURE_PATH = FIXTURE_DIR / "rust_nofec.json"
 FEC_FIXTURE_PATH = FIXTURE_DIR / "rust_fec.json"
@@ -48,3 +52,19 @@ def load_rust_fec_fixtures() -> dict[str, Any]:
     with FEC_FIXTURE_PATH.open(encoding="utf-8") as handle:
         document: dict[str, Any] = json.load(handle)
     return document
+
+
+@pytest.fixture(params=["python", "native"])
+def codec_backend(
+    request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch
+) -> _codecs.CodecBackend:
+    """Run the test once per codec backend, each made the active one.
+
+    The compiled backend is part of the development build, so a missing one
+    fails the test instead of skipping it.
+    """
+    backend = _codecs.PYTHON if request.param == "python" else _codecs.NATIVE
+    if backend is None:
+        pytest.fail("the compiled codec extension cryptovault._native is not built")
+    monkeypatch.setattr(_codecs, "ACTIVE", backend)
+    return backend
