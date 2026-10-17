@@ -227,16 +227,6 @@ uv build
 (cd native && cargo fmt --check && cargo clippy --release --all-targets -- -D warnings)
 ```
 
-## Roadmap
-
-1. **`NoFec` blob format, Argon2id and key wrapping.** Implemented and cross-checked against
-   the crate in both directions.
-2. **The FEC strategies.** Reed-Solomon, the interleaver and Viterbi, so any `cryptovault`
-   blob can be read from Python. Implemented and cross-checked in both directions.
-3. **Compiled codecs.** A PyO3 extension wraps the `reedsolomon` and `viterbi` crates the
-   reference crate uses, with the pure-Python codecs as the fallback where no compiled wheel
-   exists. Implemented; the crate fixtures check both.
-
 ## License
 
 Licensed under either of
