@@ -223,8 +223,9 @@ jobs:
 
   # Proof, not assumption: exactly the expected distributions, each carrying
   # the package, its metadata and the licenses and nothing else (no tests,
-  # fixtures or the Rust interop tool); every compiled wheel has the extension,
-  # the pure one has none, and all of them ship the same Python sources.
+  # fixtures or the Rust interop tool; musllinux wheels also carry the libgcc_s
+  # auditwheel vendors). Every compiled wheel has the extension, the pure one
+  # has none, and all of them ship the same Python sources.
   verify:
     name: Verify distributions
     needs: [gate, wheels, pure]
@@ -249,7 +250,8 @@ jobs:
           platforms = [r"manylinux_2_17_x86_64\.manylinux2014_x86_64",
                        r"manylinux_2_17_aarch64\.manylinux2014_aarch64",
                        r"musllinux_1_2_x86_64", r"musllinux_1_2_aarch64",
-                       r"win_amd64", r"macosx_\d+_\d+_universal2"]
+                       r"win_amd64",
+                       r"macosx_10_12_x86_64\.macosx_11_0_arm64\.macosx_10_12_universal2"]
           compiled = [n for n in names if "-cp311-abi3-" in n]
           pure, sdist = f"{stem}-py3-none-any.whl", f"{stem}.tar.gz"
           errors = []
@@ -267,8 +269,10 @@ jobs:
           reference = None
           for name in compiled + [pure]:
               members = zipfile.ZipFile(dist / name).namelist()
-              outside = [n for n in members
-                         if not n.startswith(("cryptovault/", f"{stem}.dist-info/"))]
+              # auditwheel vendors libgcc_s (Rust's unwinder) into musllinux wheels.
+              vendored = ("cryptovault_py.libs/",) if "musllinux" in name else ()
+              outside = [n for n in members if not n.startswith(
+                  ("cryptovault/", f"{stem}.dist-info/", *vendored))]
               native = [n for n in members
                         if re.fullmatch(r"cryptovault/_native\..*(pyd|so)", n)]
               if outside:
