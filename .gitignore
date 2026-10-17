@@ -4,6 +4,7 @@ CLAUDE.md
 .claude/
 sbtdd/
 planning/
+dev-docs/
 
 # MAGI gate (magi-rs config, encrypted database and logs)
 .magi/
