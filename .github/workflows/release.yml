@@ -157,16 +157,16 @@ jobs:
 
           v = os.environ["VERSION"]
           dist = pathlib.Path("dist")
-          wheel = dist / f"cryptovault-{v}-py3-none-any.whl"
-          sdist = dist / f"cryptovault-{v}.tar.gz"
+          wheel = dist / f"cryptovault_py-{v}-py3-none-any.whl"
+          sdist = dist / f"cryptovault_py-{v}.tar.gz"
           # uv build also drops a `.gitignore` in dist/; hidden files are never uploaded.
           found = sorted(p.name for p in dist.iterdir() if not p.name.startswith("."))
           if found != sorted([wheel.name, sdist.name]):
               sys.exit(f"unexpected distributions: {found}")
 
           bad = [n for n in zipfile.ZipFile(wheel).namelist()
-                 if not n.startswith(("cryptovault/", f"cryptovault-{v}.dist-info/"))]
-          root = f"cryptovault-{v}"
+                 if not n.startswith(("cryptovault/", f"cryptovault_py-{v}.dist-info/"))]
+          root = f"cryptovault_py-{v}"
           allowed = {f"{root}/{n}" for n in ("LICENSE-APACHE", "LICENSE-MIT",
                      "PKG-INFO", "README.md", "pyproject.toml", "pyproject.toml.orig")}
           allowed |= {root, f"{root}/src"}
@@ -233,7 +233,7 @@ jobs:
           assert_ = lambda ok, what: ok or sys.exit(f"FAIL: {what}")
           print(sys.version.split()[0], "cryptography", cryptography.__version__,
                 backend.openssl_version_text(), "optimize", sys.flags.optimize)
-          assert_(importlib.metadata.version("cryptovault") == os.environ["VERSION"],
+          assert_(importlib.metadata.version("cryptovault-py") == os.environ["VERSION"],
                   "installed version")
           assert_(not cryptovault.__file__.startswith(os.getcwd() + os.sep + "src"),
                   "imported from the source tree")
@@ -273,7 +273,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: pypi
-      url: https://pypi.org/project/cryptovault/${{ needs.gate.outputs.version }}/
+      url: https://pypi.org/project/cryptovault-py/${{ needs.gate.outputs.version }}/
     permissions:
       id-token: write
     steps:
