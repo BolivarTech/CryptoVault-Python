@@ -7,7 +7,7 @@ from typing import Final
 
 from cryptovault.constants import MAX_BLOB_LEN, TERMINATION_OVERHEAD, VITERBI_CHUNK
 from cryptovault.error import InvalidInputError
-from cryptovault.fec import _viterbi
+from cryptovault.fec import _codecs
 
 _FULL_CHUNK_BODY: Final = 2 * VITERBI_CHUNK + TERMINATION_OVERHEAD
 """Coded length of a full sub-block."""
@@ -45,7 +45,7 @@ class ViterbiCodec:
             The coded stream.
         """
         return b"".join(
-            _viterbi.encode(rs_stream[start : start + VITERBI_CHUNK])
+            _codecs.ACTIVE.viterbi_encode(rs_stream[start : start + VITERBI_CHUNK])
             for start in range(0, len(rs_stream), VITERBI_CHUNK)
         )
 
@@ -64,7 +64,7 @@ class ViterbiCodec:
         out = bytearray()
         offset = 0
         for body_len in _chunk_body_lengths(len(blob_body)):
-            out += _viterbi.decode(blob_body[offset : offset + body_len])
+            out += _codecs.ACTIVE.viterbi_decode(blob_body[offset : offset + body_len])
             offset += body_len
         return bytes(out)
 
